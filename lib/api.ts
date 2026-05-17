@@ -196,7 +196,43 @@ export async function requestPasswordReset(email: string) {
     throw new Error(data.error?.message ?? "Unable to request password reset");
   }
 
-  return data;
+  return data as { message: string; previewUrl?: string };
+}
+
+export async function validatePasswordResetToken(token: string) {
+  const response = await fetch(`${API_BASE}/auth/reset-password/validate?token=${encodeURIComponent(token)}`, {
+    cache: "no-store"
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message ?? "Unable to validate password reset link");
+  }
+
+  return data as { email: string; fullName: string };
+}
+
+export async function confirmPasswordReset(payload: {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}) {
+  const response = await fetch(`${API_BASE}/auth/reset-password/confirm`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message ?? "Unable to update password");
+  }
+
+  return data as { message: string; email: string };
 }
 
 export async function driverApply(payload: unknown) {
