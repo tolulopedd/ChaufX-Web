@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "../../../packages/design-tokens/src/web.css";
+@import "./design-tokens.css";
 
 :root {
   color-scheme: light;

@@ -1,0 +1,16 @@
+:root {
+  --chaufx-blue-50: #eef3ff;
+  --chaufx-blue-100: #dce6ff;
+  --chaufx-blue-500: #2f6bff;
+  --chaufx-blue-600: #204bdb;
+  --chaufx-blue-700: #1636ab;
+  --chaufx-blue-900: #142765;
+  --chaufx-accent: #10b981;
+  --chaufx-surface: #ffffff;
+  --chaufx-surface-muted: #f5f8ff;
+  --chaufx-ink: #081120;
+  --chaufx-muted: #64748b;
+  --chaufx-border: #d8e0f2;
+  --chaufx-warning: #f59e0b;
+  --chaufx-danger: #dc2626;
+}
