@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatCard, StatusPill } from "../../components/admin-primitives";
+import {
+  EmptyState,
+  StatCard,
+  StatusPill,
+  adminInputClass,
+  adminPrimaryButtonClass
+} from "../../components/admin-primitives";
 import { useAdminResource } from "../../lib/api";
 
 type ReportRow = {
@@ -66,32 +72,32 @@ export default function ReportsPage() {
       {
         title: "Approved drivers",
         value: data.approvedDrivers.length,
-        detail: "Drivers approved with review dates ready for export."
+        detail: "Approved driver accounts."
       },
       {
         title: "Pending onboarding",
         value: data.pendingApplications.length,
-        detail: "Driver applications waiting for review or follow-up."
+        detail: "Applications awaiting action."
       },
       {
         title: "Active customers",
         value: data.activeCustomers.filter((customer: any) => customer.bookings.length > 0).length,
-        detail: "Customers with booking activity already on the platform."
+        detail: "Customers with booking activity."
       },
       {
         title: "Pending driver payments",
         value: pendingPayments.length,
-        detail: "Payment records still waiting for settlement handling."
+        detail: "Pending payment records."
       },
       {
         title: "Trips completed",
         value: data.completedTrips.length,
-        detail: "Completed bookings ready for reporting and reconciliation."
+        detail: "Completed bookings."
       },
       {
         title: "Booked or scheduled",
         value: data.scheduledTrips.length,
-        detail: "Upcoming or in-progress bookings that still need monitoring."
+        detail: "Upcoming and in-progress bookings."
       }
     ],
     [data.activeCustomers, data.approvedDrivers.length, data.completedTrips.length, data.pendingApplications.length, data.scheduledTrips.length, pendingPayments.length]
@@ -260,7 +266,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <AdminShell title="Reports" description="Reports for onboarding, completed trips, payment records, and customer rating data.">
+    <AdminShell title="Reports" description="Onboarding, trip, payment, and rating reports.">
       <div className="grid gap-4 xl:grid-cols-3">
         {summaryCards.map((card, index) => (
           <StatCard key={card.title} title={card.title} value={card.value} detail={card.detail} tone={index === 3 ? "dark" : "light"} />
@@ -269,12 +275,12 @@ export default function ReportsPage() {
 
       <Panel
         title="Report filters"
-        subtitle="Spool the exact report you need, then download the current result view as a PDF."
+        subtitle="Refine the report view and export the current results as a PDF."
         aside={
           <button
             type="button"
             onClick={downloadPdf}
-            className="rounded-2xl bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_32px_-18px_rgba(37,99,235,0.55)]"
+            className={adminPrimaryButtonClass}
           >
             Download PDF
           </button>
@@ -283,7 +289,7 @@ export default function ReportsPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Report type</span>
-            <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#2563EB]" value={reportType} onChange={(event) => setReportType(event.target.value as typeof reportType)}>
+            <select className={adminInputClass} value={reportType} onChange={(event) => setReportType(event.target.value as typeof reportType)}>
               {reportOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -293,7 +299,7 @@ export default function ReportsPage() {
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Province/Territory</span>
-            <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#2563EB]" value={province} onChange={(event) => setProvince(event.target.value)}>
+            <select className={adminInputClass} value={province} onChange={(event) => setProvince(event.target.value)}>
               <option value="all">All provinces</option>
               {provinceOptions.map((item) => (
                 <option key={item} value={item}>
@@ -304,7 +310,7 @@ export default function ReportsPage() {
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Status</span>
-            <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#2563EB]" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <select className={adminInputClass} value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="all">All statuses</option>
               {statusOptions.map((item) => (
                 <option key={item} value={item}>
@@ -315,18 +321,18 @@ export default function ReportsPage() {
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">From date</span>
-            <input type="date" className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm outline-none transition focus:border-[#2563EB]" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+            <input type="date" className={adminInputClass} value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">To date</span>
-            <input type="date" className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm outline-none transition focus:border-[#2563EB]" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            <input type="date" className={adminInputClass} value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
           </label>
         </div>
 
         <label className="mt-4 block">
           <span className="mb-2 block text-sm font-medium text-slate-700">Search</span>
           <input
-            className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm outline-none transition focus:border-[#2563EB]"
+            className={adminInputClass}
             placeholder="Search names, emails, routes, or booking notes"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -336,20 +342,20 @@ export default function ReportsPage() {
 
       <Panel
         title={selectedReportLabel}
-        subtitle={`${filteredRows.length} record${filteredRows.length === 1 ? "" : "s"} match the current filters.`}
+        subtitle={`${filteredRows.length} record${filteredRows.length === 1 ? "" : "s"} in the current view.`}
       >
         {loading ? <p className="text-sm text-slate-500">Loading reports...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         {filteredRows.length ? (
           <div className="space-y-3">
             {filteredRows.map((row) => (
-              <div key={row.id} className="flex flex-col gap-4 rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="text-base font-semibold tracking-[-0.03em] text-slate-950">{row.title}</div>
+            <div key={row.id} className="flex flex-col gap-3 rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3.5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 flex-1">
+                  <div className="text-[0.95rem] font-semibold tracking-[-0.03em] text-slate-950">{row.title}</div>
                   <div className="mt-1 text-sm text-slate-500">{row.subtitle}</div>
-                  <div className="mt-2 text-sm text-slate-600">{row.meta}</div>
+                  <div className="mt-1.5 text-sm text-slate-600">{row.meta}</div>
                 </div>
-                <div className="flex flex-col items-start gap-2 lg:items-end">
+                <div className="flex flex-col items-start gap-1.5 lg:items-end">
                   <StatusPill
                     label={row.status}
                     tone={
@@ -370,11 +376,11 @@ export default function ReportsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No records match the current filters" description="Adjust the report type, date range, province, or status filter to find the report you need." />
+          <EmptyState title="No records found" description="No records match the selected report filters." />
         )}
       </Panel>
 
-      <Panel title="Customer ratings" subtitle="Recent customer feedback attached to completed trips.">
+      <Panel title="Customer ratings" subtitle="Recent customer feedback for completed trips.">
         {data.ratings.length ? (
           <div className="grid gap-3 lg:grid-cols-2">
             {data.ratings.slice(0, 6).map((rating: any) => (
@@ -391,7 +397,7 @@ export default function ReportsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No rating records yet" description="Customer rating feedback will appear here once completed trips are reviewed." />
+          <EmptyState title="No rating records yet" description="Customer ratings are not available at this time." />
         )}
       </Panel>
     </AdminShell>

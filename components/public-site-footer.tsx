@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function PublicSiteFooter() {
   return (
     <footer className="border-t border-[#E5E7EB] bg-white">
@@ -15,13 +17,21 @@ export function PublicSiteFooter() {
         </div>
 
         <div className="flex flex-wrap gap-5 text-sm font-semibold text-slate-600">
-          <a href="https://instagram.com" target="_blank" rel="noreferrer" className="transition hover:text-[#2563EB]">
+          <Link href="/blog" className="transition hover:text-[#2563EB]">
+            Blog
+          </Link>
+          <a href="https://www.instagram.com/chaufx_" target="_blank" rel="noreferrer" className="transition hover:text-[#2563EB]">
             Instagram
           </a>
-          <a href="https://facebook.com" target="_blank" rel="noreferrer" className="transition hover:text-[#2563EB]">
+          <a href="https://www.facebook.com/share/1CVMM5orV5/?mibextid=wwXIfr" target="_blank" rel="noreferrer" className="transition hover:text-[#2563EB]">
             Facebook
           </a>
-          <a href="https://linkedin.com" target="_blank" rel="noreferrer" className="transition hover:text-[#2563EB]">
+          <a
+            href="https://www.linkedin.com/company/chaufx-inc/?lipi=urn%3Ali%3Apage%3Ad_flagship3_company_admin%3Bs38t2%2BF%2FQsixoBwjgBA%2FQg%3D%3D"
+            target="_blank"
+            rel="noreferrer"
+            className="transition hover:text-[#2563EB]"
+          >
             LinkedIn
           </a>
         </div>

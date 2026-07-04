@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PublicPageShell } from "../../../components/public-page-shell";
 import { driverApply } from "../../../lib/api";
@@ -29,6 +29,7 @@ const experienceMap: Record<string, number> = {
 };
 
 const uploadAccept = ".pdf,.png,.jpg,.jpeg,.webp";
+const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 type DocumentUploadKey =
   | "driverLicenseFront"
@@ -40,6 +41,14 @@ type DocumentUploadKey =
   | "workAuthorization"
   | "healthTrainingCertificate"
   | "signature";
+
+type AddressSuggestion = {
+  id: string;
+  label: string;
+  addressLine: string;
+  city: string;
+  postalCode: string;
+};
 
 const requiredUploadFields: DocumentUploadKey[] = [
   "driverLicenseFront",
@@ -82,12 +91,68 @@ async function fileToDataUrl(file: File) {
   });
 }
 
+function extractContextText(context: any[] | undefined, prefix: string) {
+  const match = Array.isArray(context) ? context.find((entry) => String(entry?.id ?? "").startsWith(prefix)) : null;
+  return typeof match?.text === "string" ? match.text : "";
+}
+
+function mapFeatureToSuggestion(feature: any): AddressSuggestion | null {
+  if (!feature || !Array.isArray(feature.center) || feature.center.length < 2) {
+    return null;
+  }
+
+  const city =
+    extractContextText(feature.context, "place.") ||
+    extractContextText(feature.context, "locality.") ||
+    extractContextText(feature.context, "district.");
+  const postalCode = extractContextText(feature.context, "postcode.");
+
+  return {
+    id: String(feature.id),
+    label: String(feature.place_name ?? feature.text ?? ""),
+    addressLine: String(feature.address ? `${feature.address} ${feature.text ?? ""}`.trim() : feature.text ?? feature.place_name ?? ""),
+    city,
+    postalCode
+  };
+}
+
+async function searchCanadianAddresses(query: string) {
+  if (!mapboxToken || query.trim().length < 3) {
+    return [] as AddressSuggestion[];
+  }
+
+  const params = new URLSearchParams({
+    access_token: mapboxToken,
+    autocomplete: "true",
+    limit: "5",
+    language: "en",
+    country: "ca",
+    types: "address,place,postcode"
+  });
+
+  const response = await fetch(
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query.trim())}.json?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    throw new Error("Unable to load address suggestions right now.");
+  }
+
+  const payload = await response.json();
+  const features = Array.isArray(payload?.features) ? payload.features : [];
+
+  return features.map(mapFeatureToSuggestion).filter((item: AddressSuggestion | null): item is AddressSuggestion => Boolean(item));
+}
+
 function DriverApplicationFormPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addressSearching, setAddressSearching] = useState(false);
   const verified = searchParams.get("verified") === "1";
+  const suppressAddressSearchRef = useRef(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<DocumentUploadKey, File | null>>({
     driverLicenseFront: null,
     driverLicenseBack: null,
@@ -162,6 +227,55 @@ function DriverApplicationFormPageContent() {
     ],
     []
   );
+
+  useEffect(() => {
+    if (suppressAddressSearchRef.current) {
+      suppressAddressSearchRef.current = false;
+      return;
+    }
+
+    if (!mapboxToken || form.address.trim().length < 3) {
+      setAddressSuggestions([]);
+      setAddressSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setAddressSearching(true);
+
+      try {
+        const suggestions = await searchCanadianAddresses(form.address);
+        if (!cancelled) {
+          setAddressSuggestions(suggestions);
+        }
+      } catch {
+        if (!cancelled) {
+          setAddressSuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setAddressSearching(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [form.address]);
+
+  function applyAddressSuggestion(suggestion: AddressSuggestion) {
+    suppressAddressSearchRef.current = true;
+    setForm((current) => ({
+      ...current,
+      address: suggestion.addressLine || suggestion.label,
+      city: suggestion.city || current.city,
+      postalCode: suggestion.postalCode || current.postalCode
+    }));
+    setAddressSuggestions([]);
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -323,7 +437,42 @@ function DriverApplicationFormPageContent() {
                 </label>
                 <label className="block md:col-span-2">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Home address</span>
-                  <input className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} required />
+                  <div className="relative">
+                    <input
+                      className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]"
+                      value={form.address}
+                      onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
+                      onBlur={() => {
+                        window.setTimeout(() => setAddressSuggestions([]), 150);
+                      }}
+                      required
+                    />
+                    {mapboxToken && (addressSearching || addressSuggestions.length > 0) ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_24px_70px_-45px_rgba(15,23,42,0.35)]">
+                        {addressSearching ? (
+                          <div className="px-4 py-3 text-sm text-slate-500">Searching addresses...</div>
+                        ) : null}
+                        {!addressSearching
+                          ? addressSuggestions.map((suggestion) => (
+                              <button
+                                key={suggestion.id}
+                                type="button"
+                                className="block w-full border-b border-[#EEF2FF] px-4 py-3 text-left text-sm text-slate-700 transition last:border-b-0 hover:bg-[#F8FAFC]"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyAddressSuggestion(suggestion)}
+                              >
+                                {suggestion.label}
+                              </button>
+                            ))
+                          : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  {mapboxToken ? (
+                    <span className="mt-2 block text-xs text-slate-500">
+                      Select a suggested address from the list if available, or enter your address manually, no data is stored until you submit your application.
+                    </span>
+                  ) : null}
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">City</span>

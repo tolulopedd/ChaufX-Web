@@ -1,7 +1,11 @@
 "use client";
 
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatusPill } from "../../components/admin-primitives";
+import {
+  EmptyState,
+  StatusPill,
+  adminPrimaryButtonClass
+} from "../../components/admin-primitives";
 import { adminFetch, contactMessagesFallback, useAdminResource } from "../../lib/api";
 
 export default function MessagesPage() {
@@ -10,29 +14,29 @@ export default function MessagesPage() {
   return (
     <AdminShell
       title="Messages"
-      description="Inbox for inquiry messages submitted from ChaufX website."
+      description="Website inquiries and contact requests."
     >
-      <Panel title="Incoming messages" subtitle="Review new website inquiries and mark them resolved once handled.">
+      <Panel title="Incoming messages" subtitle="Review incoming inquiries and resolution status.">
         {loading ? <p className="text-sm text-slate-500">Loading messages...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
 
-        <div className="grid gap-4">
+        <div className="grid gap-3">
           {data.length ? (
             data.map((message) => (
-              <div key={message.id} className="rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div key={message.id} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="max-w-3xl">
                     <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">
                       {message.subject || "Driver inquiry"}
                     </div>
-                    <h3 className="mt-2 text-lg font-semibold tracking-[-0.04em] text-slate-950">{message.fullName}</h3>
+                    <h3 className="mt-2 text-[1.02rem] font-semibold tracking-[-0.04em] text-slate-950">{message.fullName}</h3>
                     <p className="mt-1 text-sm text-slate-500">
                       {message.email}
                       {message.province ? ` • ${message.province}` : ""}
                       {message.source ? ` • ${message.source}` : ""}
                     </p>
-                    <p className="mt-4 text-sm leading-7 text-slate-700">{message.message}</p>
-                    <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-400">
+                    <p className="mt-3 text-sm leading-6 text-slate-700">{message.message}</p>
+                    <p className="mt-3 text-xs uppercase tracking-[0.22em] text-slate-400">
                       Received {new Date(message.createdAt).toLocaleString()}
                     </p>
                   </div>
@@ -42,7 +46,7 @@ export default function MessagesPage() {
                     {message.status === "NEW" ? (
                       <button
                         type="button"
-                        className="rounded-full bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_32px_-18px_rgba(37,99,235,0.55)]"
+                        className={adminPrimaryButtonClass}
                         onClick={async () => {
                           await adminFetch(`/admin/contact-messages/${message.id}/status`, {
                             method: "POST",
@@ -63,7 +67,7 @@ export default function MessagesPage() {
               </div>
             ))
           ) : (
-            <EmptyState title="No messages yet" description="Inquiry messages sent from the website will appear here." />
+            <EmptyState title="No messages" description="There are no contact messages at this time." />
           )}
         </div>
       </Panel>

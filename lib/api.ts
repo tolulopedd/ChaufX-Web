@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://chaufx-backend.onrender.com/api";
 const TOKEN_KEY = "chaufx_admin_token";
 const DRIVER_TOKEN_KEY = "chaufx_driver_web_token";
+const CUSTOMER_TOKEN_KEY = "chaufx_customer_web_token";
 
 export function getStoredToken() {
   if (typeof window === "undefined") {
@@ -46,8 +47,36 @@ export function clearStoredDriverToken() {
   }
 }
 
+export function getStoredCustomerToken() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem(CUSTOMER_TOKEN_KEY) ?? "";
+}
+
+export function setStoredCustomerToken(token: string) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(CUSTOMER_TOKEN_KEY, token);
+  }
+}
+
+export function clearStoredCustomerToken() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(CUSTOMER_TOKEN_KEY);
+  }
+}
+
 function handleAdminAuthFailure() {
   clearStoredToken();
+
+  if (typeof window !== "undefined") {
+    window.location.href = "/login";
+  }
+}
+
+function handleCustomerAuthFailure() {
+  clearStoredCustomerToken();
 
   if (typeof window !== "undefined") {
     window.location.href = "/login";
@@ -301,6 +330,31 @@ export async function fetchDriverProfile(token: string) {
   return data;
 }
 
+export async function customerFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = getStoredCustomerToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: token ? `Bearer ${token}` : "",
+      ...(options?.headers ?? {})
+    }
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      handleCustomerAuthFailure();
+      throw new Error("Session expired. Redirecting to login...");
+    }
+
+    throw new Error(payload?.error?.message ?? "Request failed");
+  }
+
+  return payload as T;
+}
+
 export async function submitContactMessage(payload: {
   fullName: string;
   email: string;
@@ -419,6 +473,55 @@ export function useAdminResource<T>(path: string, fallback: T) {
       reload: async () => {
         setLoading(true);
         const result = await adminFetch<T>(path);
+        setData(result);
+        setLoading(false);
+      }
+    }),
+    [data, error, loading, path]
+  );
+}
+
+export function useCustomerResource<T>(path: string, fallback: T) {
+  const [data, setData] = useState<T>(fallback);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    customerFetch<T>(path)
+      .then((result) => {
+        if (!mounted) {
+          return;
+        }
+        setData(result);
+        setError("");
+      })
+      .catch((reason: Error) => {
+        if (!mounted) {
+          return;
+        }
+        setError(reason.message);
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [path]);
+
+  return useMemo(
+    () => ({
+      data,
+      loading,
+      error,
+      reload: async () => {
+        setLoading(true);
+        const result = await customerFetch<T>(path);
         setData(result);
         setLoading(false);
       }

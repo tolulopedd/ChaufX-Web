@@ -42,7 +42,7 @@ function StatusPageContent() {
     result?.status === "UNDER_REVIEW" && result?.reviewNote
       ? "Our team needs a few more details before we can continue with your application."
       : result?.status === "APPROVED"
-        ? "Your application has been approved. You can now continue with ChaufX driver access."
+        ? "Your application has been approved. You can now sign in to your ChaufX driver account."
         : result?.status === "REJECTED"
           ? "There is an important update on your application. Please review the note below."
           : "Your application is being reviewed by our team.";
@@ -64,7 +64,7 @@ function StatusPageContent() {
             </Link>
           </div>
           <div className="mt-6 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Application status</div>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-[#0F172A]">Check your onboarding status</h1>
+          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-[#0F172A]">Review your application status</h1>
 
           <form className="mt-8 flex gap-3" onSubmit={onSubmit}>
             <input
@@ -77,7 +77,7 @@ function StatusPageContent() {
               type="submit"
               className="rounded-2xl bg-[#4F46E5] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_-18px_rgba(79,70,229,0.55)]"
             >
-              {loading ? "Checking..." : "Check"}
+              {loading ? "Loading..." : "View status"}
             </button>
           </form>
 
@@ -93,13 +93,13 @@ function StatusPageContent() {
               </div>
 
               <div className="mt-5 text-sm text-slate-600">
-                Service areas: {result.preferredServiceAreas.join(", ")} · Documents: {result.documents.length}
+                Preferred coverage: {result.preferredServiceAreas.join(", ")} · Documents on file: {result.documents.length}
               </div>
               <div className="mt-3 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4">
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Application update</div>
                 <div className="mt-2 text-sm text-slate-600">{statusMessage}</div>
                 <div className="mt-3 text-sm font-medium text-slate-800">
-                  {result.reviewNote ? `Review note: ${result.reviewNote}` : "No additional note has been shared yet."}
+                  {result.reviewNote ? `Review note: ${result.reviewNote}` : "No additional note is available at this time."}
                 </div>
               </div>
 
@@ -141,8 +141,8 @@ export default function StatusPage() {
                 </Link>
               </div>
               <div className="mt-6 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Application status</div>
-              <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-[#0F172A]">Loading your onboarding status</h1>
-              <p className="mt-4 text-sm leading-7 text-slate-600">Please wait while we prepare the status check page.</p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-[#0F172A]">Loading application status</h1>
+              <p className="mt-4 text-sm leading-7 text-slate-600">Please wait while we prepare your status page.</p>
             </section>
           </div>
         </main>

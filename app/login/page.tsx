@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AdminBrand } from "../../components/admin-brand";
 import {
+  clearStoredCustomerToken,
   clearStoredDriverToken,
   clearStoredToken,
   requestCustomerVerificationEmail,
   requestPasswordReset,
+  setStoredCustomerToken,
   setStoredDriverToken,
   setStoredToken,
   webLogin
@@ -94,6 +96,7 @@ function LoginPageContent() {
 
       clearStoredToken();
       clearStoredDriverToken();
+      clearStoredCustomerToken();
 
       if (result.user.role === "admin") {
         setStoredToken(result.accessToken);
@@ -108,7 +111,8 @@ function LoginPageContent() {
       }
 
       if (result.user.role === "customer") {
-        setSuccess("Customer account recognized. Continue in the ChaufX mobile app for bookings and trip updates.");
+        setStoredCustomerToken(result.accessToken);
+        router.push("/customer");
         return;
       }
 
@@ -145,6 +149,7 @@ function LoginPageContent() {
 
       clearStoredToken();
       clearStoredDriverToken();
+      clearStoredCustomerToken();
       setSignupVerificationSent(true);
       setSignupPreviewUrl(result.previewUrl ?? "");
       setSuccess(result.message);
@@ -278,7 +283,7 @@ function LoginPageContent() {
                   <div className="rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC] p-6">
                     <div className="text-sm font-semibold text-slate-950">Driver onboarding</div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Drivers complete the onboarding form first. Once approved, access is provided through the ChaufX Driver App.
+                      Drivers complete the onboarding form first. Once approved, sign-in access is activated for the ChaufX Driver App.
                     </p>
                   </div>
 
