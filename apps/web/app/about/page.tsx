@@ -4,7 +4,7 @@ import { PublicPageShell } from "../../components/public-page-shell";
 export default function AboutPage() {
   return (
     <PublicPageShell
-      heroTitle="About ChaufX"
+      heroTitle="About Us"
       heroCopy="ChaufX is a Canadian chauffeur service built around one simple idea: professional driving in the comfort of your own vehicle."
     >
       <section className="bg-white">
