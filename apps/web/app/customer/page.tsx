@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { defaultServiceZones, toCurrency } from "@chaufx/config";
+import { defaultServiceZones, toCurrency } from "../../lib/config";
 import { EmptyState, StatusPill } from "../../components/admin-primitives";
 import { clearStoredCustomerToken, customerFetch, getStoredCustomerToken, useCustomerResource } from "../../lib/api";
 

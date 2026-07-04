@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { appConfig, toCurrency } from "@chaufx/config";
+import { appConfig, toCurrency } from "../../lib/config";
 import { AdminShell, Panel } from "../../components/admin-shell";
 import {
   EmptyState,

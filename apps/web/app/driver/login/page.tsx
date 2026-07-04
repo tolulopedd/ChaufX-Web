@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { toCurrency } from "@chaufx/config";
+import { toCurrency } from "../../../lib/config";
 import { EmptyState, StatCard, StatusPill, adminTableCellClass, adminTableHeadClass } from "../../../components/admin-primitives";
 import { clearStoredDriverToken, fetchDriverProfile, getStoredDriverToken } from "../../../lib/api";
 
