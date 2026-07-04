@@ -10,30 +10,30 @@ export default function DriversPage() {
   const assignedCount = data.reduce((sum, driver) => sum + driver.bookings.length, 0);
 
   return (
-    <AdminShell title="Drivers" description="Review approved driver accounts, current availability, and active assignment load.">
+    <AdminShell title="Drivers" description="Driver roster, availability, and active assignments.">
       <div className="grid gap-4 lg:grid-cols-3">
-        <StatCard title="Approved drivers" value={data.length} detail="Drivers already activated for trip assignment." />
-        <StatCard title="Available now" value={availableCount} detail="Drivers currently toggled online to receive requests." />
-        <StatCard title="Open assignments" value={assignedCount} detail="Active bookings currently attached to the roster." />
+        <StatCard title="Approved drivers" value={data.length} detail="Active driver accounts." />
+        <StatCard title="Available now" value={availableCount} detail="Drivers online for requests." />
+        <StatCard title="Open assignments" value={assignedCount} detail="Current assigned bookings." />
       </div>
 
-      <Panel title="Driver roster" subtitle="A live view of approved operators, service coverage, and assignment load.">
+      <Panel title="Driver roster" subtitle="Approved drivers, availability, and assignment activity.">
         {loading ? <p className="text-sm text-slate-500">Loading drivers...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         {data.length ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {data.map((driver) => (
-              <div key={driver.id} className="rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div key={driver.id} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <div className="text-lg font-semibold tracking-[-0.04em] text-slate-950">{driver.user.fullName}</div>
+                    <div className="text-[1.02rem] font-semibold tracking-[-0.04em] text-slate-950">{driver.user.fullName}</div>
                     <div className="mt-1 text-sm text-slate-500">{driver.user.email}</div>
                   </div>
                   <StatusPill label={driver.availabilityStatus ? "Available" : "Offline"} tone={driver.availabilityStatus ? "emerald" : "neutral"} />
                 </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
                   <div className="rounded-2xl border border-white bg-white px-4 py-3">
-                    <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Service areas</div>
+                    <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Coverage</div>
                     <div className="mt-2 text-sm font-semibold text-slate-950">{driver.serviceAreas.join(", ")}</div>
                   </div>
                   <div className="rounded-2xl border border-white bg-white px-4 py-3">
@@ -51,7 +51,7 @@ export default function DriversPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No approved drivers yet" description="Approved operators will appear here once onboarding decisions are completed." />
+          <EmptyState title="No approved drivers" description="There are no approved drivers to display." />
         )}
       </Panel>
     </AdminShell>

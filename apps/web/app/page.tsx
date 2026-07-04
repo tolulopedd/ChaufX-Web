@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicPageShell } from "../components/public-page-shell";
+import { SoroBlogPreview } from "../components/soro-blog-preview";
+import { policyDocuments } from "../lib/policy-documents";
 
 export const metadata: Metadata = {
   title: "ChaufX",
@@ -34,25 +36,6 @@ const services = [
   }
 ];
 
-const policies = [
-  {
-    title: "Privacy policy",
-    body: "ChaufX handles personal information through controlled access, secure processing, and limited operational use."
-  },
-  {
-    title: "Information collection",
-    body: "We collect only the information required for bookings, onboarding, communication, and platform operations."
-  },
-  {
-    title: "Cookies policy",
-    body: "Cookies and related technologies may be used to support website sessions, performance, and analytics."
-  },
-  {
-    title: "Data retention & sharing",
-    body: "Information is retained only as needed for service, legal, and compliance purposes and is shared on a controlled basis."
-  }
-];
-
 const flow = [
   "Confirm your pickup and destination.",
   "Request a driver now or schedule for later.",
@@ -75,7 +58,7 @@ const highlights = [
   },
   {
     title: "Approved chauffeurs",
-    body: "Approved chauffeurs arrive on schedule and operate the customer's vehicle.",
+    body: "Approved drivers arrive on schedule and operate the customer's vehicle.",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="12" cy="8" r="3" />
@@ -107,7 +90,7 @@ const portals = [
   {
     eyebrow: "Login",
     title: "Access your account",
-    body: "Use one login page for approved driver and admin accounts. ChaufX routes you by role after sign-in.",
+    body: "Use one login page for approved driver and admin accounts. We routes you by role platform after sign-in.",
     href: "/login",
     cta: "Login"
   }
@@ -116,7 +99,7 @@ const portals = [
 export default function HomePage() {
   return (
     <PublicPageShell
-      heroTitle="Driver Services on demand"
+      heroTitle="Driver services on demand"
       heroCopy="ChaufX is a Canadian personal chauffeur service that lets customers book professional drivers for their own vehicles, while giving chauffeurs and operators a simple platform to work from."
       heroTagline="Your Car, Your Convenience, Your Safety"
     >
@@ -173,7 +156,7 @@ export default function HomePage() {
       <section id="about" className="bg-white">
         <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
           <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">About ChaufX</div>
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">About Us</div>
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">
               Professional driving for your everyday plans and important journeys.
             </h2>
@@ -191,7 +174,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
           <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
             <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">How It Works</div>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">A short, clear customer flow.</h2>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">A clear three(3) steps customer flow.</h2>
             <div className="mt-6 grid gap-4 md:grid-cols-3">
               {flow.map((item, index) => (
                 <div key={item} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
@@ -209,7 +192,7 @@ export default function HomePage() {
       <section id="portals" className="bg-white">
         <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
           <div className="max-w-3xl">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Access</div>
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Join us</div>
             <h2 className="mt-4 text-4xl font-semibold tracking-[-0.06em] text-[#0F172A]">
               Use the path that fits your role.
             </h2>
@@ -239,16 +222,71 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section id="blog-preview" className="bg-white">
+        <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
+          <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="max-w-3xl">
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">
+                  Blog, News and Articles
+                </div>
+                <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">
+                  Read about our latest content.
+                </h2>
+                <p className="mt-4 text-sm leading-7 text-slate-600">
+                  This section shows our latest blog posts and news summaries that are managed by ChaufX team.
+                </p>
+              </div>
+
+              <Link
+                href="/blog"
+                className="inline-flex rounded-full bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_-18px_rgba(37,99,235,0.65)]"
+              >
+                Visit blog
+              </Link>
+            </div>
+
+            <SoroBlogPreview />
+          </div>
+        </div>
+      </section>
+
       <section id="policies" className="bg-white">
         <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {policies.map((item) => (
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl">
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Policies</div>
+              <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">See all ChaufX policies.</h2>
+              <p className="mt-4 text-sm leading-7 text-slate-600">
+                We make our public policies easy to review before using the service, creating an account, or applying as a driver.
+              </p>
+            </div>
+
+            <Link
+              href="/policies"
+              className="inline-flex rounded-full bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_-18px_rgba(37,99,235,0.65)]"
+            >
+              View all policies
+            </Link>
+          </div>
+
+          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {policyDocuments.map((item) => (
               <div
-                key={item.title}
-                className="rounded-[28px] border border-[#E5E7EB] bg-white p-6 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.14)]"
+                key={item.slug}
+                className="flex h-full flex-col rounded-[28px] border border-[#E5E7EB] bg-white p-6 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.14)]"
               >
-                <h3 className="text-xl font-semibold tracking-[-0.04em] text-[#0F172A]">{item.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-slate-600">{item.body}</p>
+                <div className="inline-flex w-fit rounded-full bg-[#EEF2FF] px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">
+                  Policy
+                </div>
+                <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em] text-[#0F172A]">{item.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{item.summary}</p>
+                <div className="mt-4 text-sm font-medium text-slate-500">{item.updatedLabel}</div>
+                <div className="mt-auto pt-6">
+                  <Link href={`/policies/${item.slug}`} className="text-sm font-semibold text-[#2563EB] transition hover:text-[#1D4ED8]">
+                    Read more
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

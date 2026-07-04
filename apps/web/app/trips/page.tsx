@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatCard, StatusPill } from "../../components/admin-primitives";
+import {
+  EmptyState,
+  StatCard,
+  StatusPill,
+  adminGhostButtonClass,
+  adminInputClass
+} from "../../components/admin-primitives";
 import { dashboardFallback, useAdminResource } from "../../lib/api";
 
 function TripMap({ trip }: { trip: any }) {
@@ -103,15 +109,15 @@ export default function TripsPage() {
   return (
     <AdminShell
       title="Active trips"
-      description="Simple monitoring view for trips currently in motion, with filters and details only when you choose to open a trip."
+      description="Trips in motion with route and assignment details."
     >
       <div className="grid gap-4 lg:grid-cols-3">
-        <StatCard title="Active trips" value={data.activeTrips.length} detail="Trips currently visible to operations monitoring." />
-        <StatCard title="Map visibility" value="Window-gated" detail="Live trip surfaces remain locked until the accepted trip reaches its activation window." />
-        <StatCard title="Monitoring mode" value="Overview only" detail="Admin sees active trip monitoring while driver navigation remains trip-window based." tone="dark" />
+        <StatCard title="Active trips" value={data.activeTrips.length} detail="Trips in progress." />
+        <StatCard title="Map visibility" value="Window-gated" detail="Map tools open during the active trip window." />
+        <StatCard title="Monitoring mode" value="Overview" detail="Current trip activity and route details." tone="dark" />
       </div>
 
-      <Panel title="Active trips list" subtitle="Filter active trips by driver, customer, route, or date and open only the trip you want to inspect.">
+      <Panel title="Active trips list" subtitle="Review active trips by driver, customer, route, or date.">
         {loading ? <p className="text-sm text-slate-500">Loading active trips...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
 
@@ -120,12 +126,12 @@ export default function TripsPage() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Filter by driver, customer, pickup, destination"
-            className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4F46E5]"
+            className={adminInputClass}
           />
           <select
             value={requestTypeFilter}
             onChange={(event) => setRequestTypeFilter(event.target.value)}
-            className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4F46E5]"
+            className={adminInputClass}
           >
             <option value="ALL">All request types</option>
             <option value="NOW">ChaufX now</option>
@@ -135,22 +141,22 @@ export default function TripsPage() {
             type="date"
             value={dateFilter}
             onChange={(event) => setDateFilter(event.target.value)}
-            className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4F46E5]"
+            className={adminInputClass}
           />
         </div>
 
         {filteredTrips.length ? (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {filteredTrips.map((trip: any) => (
               <button
                 key={trip.id}
                 type="button"
                 onClick={() => setSelectedId(trip.id)}
-                className="w-full rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4 text-left transition hover:border-[#D6DCEF] hover:bg-white"
+                className="w-full rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3.5 text-left transition hover:border-[#D6DCEF] hover:bg-white"
               >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-base font-semibold tracking-[-0.03em] text-slate-950">
+                    <div className="truncate text-[0.95rem] font-semibold tracking-[-0.03em] text-slate-950">
                       {trip.pickupLocation} to {trip.destinationLocation}
                     </div>
                     <div className="mt-1 truncate text-sm text-slate-500">
@@ -171,7 +177,7 @@ export default function TripsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No active trips to monitor" description="Adjust your filters or wait for a trip to enter the active window." />
+          <EmptyState title="No active trips" description="No active trips match the selected filters." />
         )}
       </Panel>
 
@@ -193,7 +199,7 @@ export default function TripsPage() {
               <button
                 type="button"
                 onClick={() => setSelectedId("")}
-                className="rounded-2xl border border-[#E5E7EB] px-4 py-2.5 text-sm font-semibold text-slate-700"
+                className={adminGhostButtonClass}
               >
                 Close
               </button>

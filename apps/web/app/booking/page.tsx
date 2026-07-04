@@ -27,11 +27,11 @@ export default function BookingPage() {
           <div className="mt-8 rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC] p-6">
             <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Customer access</div>
             <p className="mt-3 text-sm leading-7 text-slate-600">
-              Customer booking is completed through the ChaufX mobile experience. Use this website to understand the service, pricing, and booking flow before using the app.
+              Signed-in customers can now schedule future trips on the web, review their trip history, and still use the mobile app for live trip updates.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/how-it-works" className="rounded-full bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white">
-                See how it works
+              <Link href="/login" className="rounded-full bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white">
+                Sign in to book
               </Link>
               <Link href="/pricing" className="rounded-full border border-[#D7DEEF] px-5 py-3 text-sm font-semibold text-[#2563EB]">
                 View pricing

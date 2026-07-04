@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { appConfig, toCurrency } from "@chaufx/config";
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatCard, StatusPill } from "../../components/admin-primitives";
+import {
+  EmptyState,
+  StatCard,
+  StatusPill,
+  adminGhostButtonClass,
+  adminInputClass,
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass
+} from "../../components/admin-primitives";
 import { adminFetch, useAdminResource } from "../../lib/api";
 
 const statusToneMap: Record<string, "violet" | "amber" | "emerald" | "rose" | "navy" | "neutral"> = {
@@ -187,16 +195,16 @@ export default function BookingsPage() {
   return (
     <AdminShell
       title="Bookings"
-      description="Simple booking review with filters, clear trip status, and manual override only when operations needs to step in."
+      description="Bookings, assignment status, and trip progress."
     >
       <div className="grid gap-4 lg:grid-cols-4">
-        <StatCard title="Total bookings" value={bookings.length} detail="All bookings currently in the admin workflow." />
+        <StatCard title="Total bookings" value={bookings.length} detail="All booking records." />
         <StatCard title="Assigned" value={assignedCount} detail="Bookings already matched to a driver." />
         <StatCard title="Needs assignment" value={unassignedCount} detail="Trips still waiting on assignment." />
-        <StatCard title="Active lifecycle" value={activeCount} detail="Trips now in accepted, enroute, or active states." tone="dark" />
+        <StatCard title="Active lifecycle" value={activeCount} detail="Accepted, enroute, or active trips." tone="dark" />
       </div>
 
-      <Panel title="Bookings list" subtitle="Filter by customer, driver, date, or status, then open only the booking you want to review.">
+      <Panel title="Bookings list" subtitle="Review booking records by customer, driver, date, or status.">
         {loading ? <p className="text-sm text-slate-500">Loading bookings...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
 
@@ -205,12 +213,12 @@ export default function BookingsPage() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Filter by customer, driver, pickup, destination"
-            className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4F46E5]"
+            className={adminInputClass}
           />
           <select
             value={requestTypeFilter}
             onChange={(event) => setRequestTypeFilter(event.target.value)}
-            className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4F46E5]"
+            className={adminInputClass}
           >
             <option value="ALL">All request types</option>
             <option value="NOW">ChaufX now</option>
@@ -219,7 +227,7 @@ export default function BookingsPage() {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4F46E5]"
+            className={adminInputClass}
           >
             <option value="ALL">All statuses</option>
             <option value="PENDING">Pending</option>
@@ -233,28 +241,28 @@ export default function BookingsPage() {
             type="date"
             value={dateFilter}
             onChange={(event) => setDateFilter(event.target.value)}
-            className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4F46E5]"
+            className={adminInputClass}
           />
         </div>
 
         {filteredBookings.length ? (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {filteredBookings.map((booking) => (
               <button
                 key={booking.id}
                 type="button"
                 onClick={() => setSelectedId(booking.id)}
-                className="w-full rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4 text-left transition hover:border-[#D6DCEF] hover:bg-white"
+                className="w-full rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3.5 text-left transition hover:border-[#D6DCEF] hover:bg-white"
               >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-base font-semibold tracking-[-0.03em] text-slate-950">
+                    <div className="truncate text-[0.95rem] font-semibold tracking-[-0.03em] text-slate-950">
                       {booking.pickupLocation} to {booking.destinationLocation}
                     </div>
                     <div className="mt-1 truncate text-sm text-slate-500">
                       {booking.customer.user.fullName} · {formatDate(booking.scheduledStartAt)}
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600">
                       <span>{requestTypeLabel(booking.requestType)}</span>
                       <span>{booking.assignedDriver?.user.fullName ?? "Unassigned"}</span>
                       <span>{toCurrency(Number(booking.fareEstimate), "CAD")}</span>
@@ -270,7 +278,7 @@ export default function BookingsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No bookings found" description="Adjust your filters to find bookings by date, customer, driver, or status." />
+          <EmptyState title="No bookings found" description="No booking records match the selected filters." />
         )}
       </Panel>
 
@@ -294,12 +302,12 @@ export default function BookingsPage() {
                   <button
                     key={action.status}
                     type="button"
-                    className={`rounded-2xl px-4 py-2.5 text-sm font-semibold ${
+                    className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
                       action.status === "CANCELLED"
-                        ? "border border-rose-200 bg-rose-50 text-rose-700"
+                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                         : action.status === "COMPLETED"
-                          ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border border-[#DCDDFF] bg-[#EEF0FF] text-[#4338CA]"
+                          ? "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : adminSecondaryButtonClass
                     }`}
                     onClick={() => updateBookingStatus(selectedBooking.id, action.status)}
                     disabled={busyBookingId === selectedBooking.id}
@@ -310,7 +318,7 @@ export default function BookingsPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedId("")}
-                  className="rounded-2xl border border-[#E5E7EB] px-4 py-2.5 text-sm font-semibold text-slate-700"
+                  className={adminGhostButtonClass}
                 >
                   Close
                 </button>
@@ -332,7 +340,7 @@ export default function BookingsPage() {
               />
 
               <DetailSection
-                title="Routing & operations"
+                title="Routing details"
                 fields={[
                   { label: "Routed drivers", value: `${selectedBooking.dispatches?.length ?? 0}` },
                   { label: "Booking status", value: String(selectedBooking.status) },
@@ -368,9 +376,7 @@ export default function BookingsPage() {
               {!selectedBooking.assignedDriverId ? (
                 <div className="rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4">
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Admin override</div>
-                  <div className="mt-2 text-sm leading-6 text-slate-600">
-                    Manually assign a driver only if operations needs to override the normal driver-led acceptance flow.
-                  </div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600">Assign a driver manually when needed.</div>
                   <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
                     <select
                       value={selectedDriver[selectedBooking.id] ?? ""}
@@ -380,7 +386,7 @@ export default function BookingsPage() {
                           [selectedBooking.id]: event.target.value
                         }))
                       }
-                      className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3"
+                      className={adminInputClass}
                     >
                       <option value="">Select driver</option>
                       {drivers.map((driver) => (
@@ -391,7 +397,7 @@ export default function BookingsPage() {
                     </select>
                     <button
                       type="button"
-                      className="rounded-2xl bg-[#4F46E5] px-4 py-3 text-sm font-semibold text-white"
+                      className={adminPrimaryButtonClass}
                       onClick={() => assignDriver(selectedBooking.id)}
                       disabled={busyBookingId === selectedBooking.id}
                     >

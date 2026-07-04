@@ -11,29 +11,29 @@ export default function DashboardPage() {
     {
       title: "Total users",
       value: data.metrics.totalUsers,
-      detail: "Combined owner, driver, and admin accounts currently in the platform."
+      detail: "Customer, driver, and admin accounts."
     },
     {
       title: "Approved drivers",
       value: data.metrics.totalDrivers,
-      detail: "Drivers eligible for assignment after onboarding and review clearance."
+      detail: "Active drivers on the platform."
     },
     {
       title: "Pending review",
       value: data.metrics.pendingApplications,
-      detail: "Applications still waiting on document or identity decisions."
+      detail: "Applications awaiting a decision."
     },
     {
       title: "Active bookings",
       value: data.metrics.activeBookings,
-      detail: "Trips currently accepted, en route, or in progress."
+      detail: "Accepted, enroute, or active trips."
     }
   ];
 
   return (
     <AdminShell
       title="Dashboard"
-      description="Overview of current active users, approved drivers, pending drivers onboardings, and active bookings."
+      description="Overview of users, drivers, bookings, and revenue."
     >
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="grid gap-4 md:grid-cols-2">
@@ -45,12 +45,12 @@ export default function DashboardPage() {
         <StatCard
           title="Recorded revenue"
           value={`$${Number(data.metrics.revenue).toFixed(2)}`}
-          detail="Recorded payments only. Gateway settlement and payout reconciliation can plug into this model later."
+          detail="Recorded payments."
           tone="dark"
         />
       </div>
 
-      <Panel title="Active trips" subtitle="Monitor the trips that currently require operational visibility.">
+      <Panel title="Active trips" subtitle="Current active trip activity.">
         {loading ? <p className="text-sm text-slate-500">Loading dashboard...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         <div className="grid gap-4 lg:grid-cols-2">
@@ -78,7 +78,7 @@ export default function DashboardPage() {
               </div>
             ))
           ) : (
-            <EmptyState title="No active trips" description="Once a booking is accepted and enters the operating window, it will appear here for operations monitoring." />
+            <EmptyState title="No active trips" description="There are no active trips at this time." />
           )}
         </div>
       </Panel>

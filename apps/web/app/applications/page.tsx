@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatCard, StatusPill } from "../../components/admin-primitives";
+import {
+  EmptyState,
+  StatCard,
+  StatusPill,
+  adminGhostButtonClass,
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass
+} from "../../components/admin-primitives";
 import { adminFetch, fetchAdminDocumentLink, useAdminResource } from "../../lib/api";
 
 function formatApplicationStatus(status?: string) {
@@ -153,33 +160,33 @@ export default function ApplicationsPage() {
   return (
     <AdminShell
       title="Driver applications"
-      description="Review each onboarding submission, inspect uploaded documents, and approve or reject without leaving the application details."
+      description="Review applications, documents, and approval decisions."
     >
       <div className="grid gap-4 lg:grid-cols-3">
-        <StatCard title="Applications" value={data.length} detail="Total onboarding files currently available for admin review." />
-        <StatCard title="Submitted" value={submittedCount} detail="New driver applications waiting for the first review pass." />
-        <StatCard title="Under review" value={underReviewCount} detail="Applications already opened and currently being verified." />
+        <StatCard title="Applications" value={data.length} detail="Total applications." />
+        <StatCard title="Submitted" value={submittedCount} detail="Awaiting first review." />
+        <StatCard title="Under review" value={underReviewCount} detail="In progress." />
       </div>
 
-      <Panel title="Drivers Applications" subtitle="Select any application row to open the full submitted details and document set.">
+      <Panel title="Driver applications" subtitle="Review submitted details, supporting documents, and decisions.">
         {loading ? <p className="text-sm text-slate-500">Loading applications...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         {notice ? <p className="text-sm text-emerald-600">{notice}</p> : null}
 
         {data.length ? (
           <div className="space-y-4">
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {data.map((application) => {
                 return (
                   <button
                     key={application.id}
                     type="button"
                     onClick={() => setSelectedId(application.id)}
-                    className="w-full rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4 text-left transition hover:border-[#D6DCEF] hover:bg-white"
+                    className="w-full rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3.5 text-left transition hover:border-[#D6DCEF] hover:bg-white"
                   >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-base font-semibold tracking-[-0.03em] text-slate-950">{application.fullName}</div>
+                        <div className="truncate text-[0.95rem] font-semibold tracking-[-0.03em] text-slate-950">{application.fullName}</div>
                         <div className="mt-1 truncate text-sm text-slate-500">{application.email}</div>
                         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
                           <span>{application.phone}</span>
@@ -202,7 +209,7 @@ export default function ApplicationsPage() {
             </div>
           </div>
         ) : (
-          <EmptyState title="No pending applications" description="New driver onboarding files will appear here once candidates submit their details." />
+          <EmptyState title="No applications" description="There are no driver applications to review." />
         )}
       </Panel>
 
@@ -236,7 +243,7 @@ export default function ApplicationsPage() {
                     setReviewNote("Your application has been approved. Welcome to ChaufX.");
                     setNotice("");
                   }}
-                  className="rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
+                  className={adminPrimaryButtonClass}
                 >
                   Approve
                 </button>
@@ -253,7 +260,7 @@ export default function ApplicationsPage() {
                     setReviewNote("");
                     setNotice("");
                   }}
-                  className="rounded-2xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   Reject
                 </button>
@@ -270,14 +277,14 @@ export default function ApplicationsPage() {
                     setReviewNote("");
                     setNotice("");
                   }}
-                  className="rounded-2xl border border-[#DCDDFF] bg-[#EEF0FF] px-4 py-2.5 text-sm font-semibold text-[#4338CA] disabled:cursor-not-allowed disabled:opacity-45"
+                  className={adminSecondaryButtonClass}
                 >
                   Ask for info
                 </button>
                 <button
                   type="button"
                   onClick={() => setSelectedId("")}
-                  className="rounded-2xl border border-[#E5E7EB] px-4 py-2.5 text-sm font-semibold text-slate-700"
+                  className={adminGhostButtonClass}
                 >
                   Close
                 </button>
@@ -373,7 +380,7 @@ export default function ApplicationsPage() {
                           type="button"
                           disabled={busyId === document.id}
                           onClick={() => previewDocument(document.id, document.fileName)}
-                          className="rounded-2xl border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs font-semibold text-[#4338CA] disabled:opacity-60"
+                          className={adminSecondaryButtonClass}
                         >
                           View
                         </button>
@@ -400,7 +407,7 @@ export default function ApplicationsPage() {
               <button
                 type="button"
                 onClick={() => setPreview(null)}
-                className="rounded-full border border-[#E5E7EB] px-3 py-2 text-sm font-semibold text-slate-700"
+                className={adminGhostButtonClass}
               >
                 Close
               </button>
@@ -432,7 +439,7 @@ export default function ApplicationsPage() {
                   setReviewAction(null);
                   setReviewNote("");
                 }}
-                className="rounded-full border border-[#E5E7EB] px-3 py-2 text-sm font-semibold text-slate-700"
+                className={adminGhostButtonClass}
               >
                 Close
               </button>
@@ -452,7 +459,7 @@ export default function ApplicationsPage() {
                   setReviewAction(null);
                   setReviewNote("");
                 }}
-                className="rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm font-semibold text-slate-700"
+                className={adminGhostButtonClass}
               >
                 Cancel
               </button>
@@ -468,7 +475,7 @@ export default function ApplicationsPage() {
                     setNotice(reason instanceof Error ? reason.message : "Unable to complete review action.");
                   }
                 }}
-                className="rounded-2xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className={adminPrimaryButtonClass}
               >
                 {busyId === reviewAction.applicationId ? "Sending..." : "Send update"}
               </button>

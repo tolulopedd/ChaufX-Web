@@ -25,6 +25,7 @@ const navItems = [
   { href: "/trips", label: "Active Trips", icon: TripsIcon },
   { href: "/messages", label: "Messages", icon: MessagesIcon },
   { href: "/reports", label: "Reports", icon: ReportsIcon },
+  { href: "/settlements", label: "Settlements", icon: ReportsIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon }
 ];
 
@@ -48,9 +49,9 @@ export function AdminShell({
           <div className="rounded-[24px] bg-[linear-gradient(145deg,#0F172A,#1f2555_48%,#4338CA_100%)] p-5 text-white">
             <AdminBrand theme="dark" />
             <div className="mt-5 max-w-[12rem] rounded-full border border-white/12 bg-white/8 px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-white/70">
-              Admin console
+              Admin workspace
             </div>
-            <p className="mt-4 text-sm leading-6 text-white/80">Admin view for drivers onboarding, bookings, payments, and trip monitoring.</p>
+            <p className="mt-4 text-sm leading-6 text-white/80">Manage drivers, bookings, payments, and operations from one workspace.</p>
           </div>
 
           <nav className="mt-6 space-y-2">
@@ -99,17 +100,15 @@ export function AdminShell({
         </aside>
 
         <main className="space-y-6">
-          <section className="rounded-[32px] border border-[#E5E7EB] bg-white/90 p-6 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.22)] backdrop-blur">
+          <section className="rounded-[30px] border border-[#E5E7EB] bg-white/90 p-5 shadow-[0_20px_52px_-40px_rgba(15,23,42,0.22)] backdrop-blur">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
-                <div className="text-xs uppercase tracking-[0.24em] text-[#4F46E5]">
-                  Operations
-                </div>
-                <h1 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">{title}</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4F46E5]">Admin</div>
+                <h1 className="mt-2 text-[2rem] font-semibold tracking-[-0.05em] text-slate-950">{title}</h1>
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
               </div>
-              <div className="rounded-2xl border border-[#DCDDFF] bg-[#EEF0FF] px-4 py-3 text-sm text-[#4338CA]">
-                Demo admin login: <span className="font-semibold">admin@chaufx.com</span>
+              <div className="rounded-2xl border border-[#DCDDFF] bg-[#EEF0FF] px-4 py-2.5 text-sm font-medium text-[#4338CA]">
+                ChaufX operations center
               </div>
             </div>
           </section>
@@ -133,11 +132,11 @@ export function Panel({
   subtitle?: string;
 }) {
   return (
-    <section className="rounded-[28px] border border-[#E5E7EB] bg-white p-6 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.26)]">
-      <div className="mb-4 flex items-center justify-between">
+    <section className="rounded-[26px] border border-[#E5E7EB] bg-white p-5 shadow-[0_20px_52px_-42px_rgba(15,23,42,0.24)]">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-[-0.04em] text-slate-950">{title}</h2>
-          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+          <h2 className="text-[1.15rem] font-semibold tracking-[-0.04em] text-slate-950">{title}</h2>
+          {subtitle ? <p className="mt-1 text-sm leading-6 text-slate-500">{subtitle}</p> : null}
         </div>
         {aside}
       </div>
