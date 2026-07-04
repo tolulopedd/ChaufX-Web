@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  transpilePackages: ["@chaufx/ui", "@chaufx/design-tokens"]
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

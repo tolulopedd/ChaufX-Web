@@ -9,8 +9,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@chaufx/design-tokens": "*",
-    "@chaufx/ui": "*",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
