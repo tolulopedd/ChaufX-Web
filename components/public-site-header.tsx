@@ -17,7 +17,7 @@ const menus = [
   {
     label: "About",
     items: [
-      { label: "About ChaufX", href: "/about" },
+      { label: "About Us", href: "/about" },
       { label: "Contact", href: "/contact" },
       { label: "Become a driver", href: "/driver/apply" },
       { label: "Feedback", href: "/feedback" },

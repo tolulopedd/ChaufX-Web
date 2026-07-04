@@ -57,7 +57,7 @@ const highlights = [
     )
   },
   {
-    title: "Approved chauffeurs",
+    title: "Approved drivers",
     body: "Approved drivers arrive on schedule and operate the customer's vehicle.",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -90,7 +90,7 @@ const portals = [
   {
     eyebrow: "Login",
     title: "Access your account",
-    body: "Use one login page for approved driver and admin accounts. We routes you by role platform after sign-in.",
+    body: "Use one login page for approved driver and admin accounts. ChaufX routes each user to the correct platform after sign-in.",
     href: "/login",
     cta: "Login"
   }

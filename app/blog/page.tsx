@@ -19,10 +19,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
   const { post } = await searchParams;
 
   return (
-    <PublicPageShell
-      heroTitle="Blog, News and Articles"
-      heroCopy="These content are managed by ChaufX team. New articles are published and updated on a daily and weekly basis."
-    >
+    <PublicPageShell>
       <section className="bg-white">
         <div className="mx-auto max-w-7xl px-5 py-12 md:px-8">
           <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
