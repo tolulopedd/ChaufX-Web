@@ -27,12 +27,12 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>com.anonymous.chaufxdriver</string>
+          <string>ca.chaufx.driver</string>
         </array>
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>8</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
@@ -50,6 +50,8 @@
     <string>Allow $(PRODUCT_NAME) to access your location</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>ChaufX uses your location while you are online to route nearby requests and support active trip tracking.</string>
+    <key>NSUserNotificationsUsageDescription</key>
+    <string>ChaufX uses notifications to alert you about new bookings and trip lifecycle updates.</string>
     <key>RCTNewArchEnabled</key>
     <true/>
     <key>UILaunchStoryboardName</key>
