@@ -61,6 +61,52 @@ function looksLikePublishedDate(value: string) {
   return /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},\s+\d{4}/i.test(normalized);
 }
 
+function pickArticleContainer(anchor: HTMLAnchorElement, titleNode: Element | null) {
+  return (
+    titleNode?.closest("article, li, section") ??
+    anchor.closest("article, li, section") ??
+    titleNode?.parentElement ??
+    anchor.parentElement
+  );
+}
+
+function collectDateCandidates(nodes: Array<Element | null | undefined>) {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+
+  for (const node of nodes) {
+    if (!node) {
+      continue;
+    }
+
+    const values = Array.from(node.querySelectorAll("time, span, p"))
+      .map((child) => normalizeText(child.textContent ?? ""))
+      .filter((text) => looksLikePublishedDate(text));
+
+    for (const value of values) {
+      if (seen.has(value)) {
+        continue;
+      }
+
+      seen.add(value);
+      candidates.push(value);
+    }
+  }
+
+  return candidates;
+}
+
+function pickPublishedLabel(anchor: HTMLAnchorElement, titleNode: Element | null, container: Element | null) {
+  const candidates = collectDateCandidates([
+    titleNode?.parentElement,
+    anchor,
+    anchor.parentElement,
+    container
+  ]);
+
+  return candidates[0];
+}
+
 export function normalizeArticleHref(href: string) {
   const normalized = normalizeText(href);
 
@@ -148,11 +194,11 @@ function extractArticlePreviews(root: HTMLElement, limit?: number) {
       continue;
     }
 
-    const container = anchor.closest("article, li, section, div") ?? anchor.parentElement;
-
     const titleNode =
       anchor.querySelector("h1, h2, h3, h4, h5, h6") ??
-      container?.querySelector("h1, h2, h3, h4, h5, h6");
+      anchor.parentElement?.querySelector("h1, h2, h3, h4, h5, h6");
+
+    const container = pickArticleContainer(anchor, titleNode ?? null);
 
     const title = cleanTitle(
       titleNode?.textContent ??
@@ -171,7 +217,7 @@ function extractArticlePreviews(root: HTMLElement, limit?: number) {
           .filter((text) => text && text !== title && text !== `${title}.`)
       : [];
 
-    const publishedLabel = textBits.find((text) => looksLikePublishedDate(text)) ?? undefined;
+    const publishedLabel = pickPublishedLabel(anchor, titleNode ?? null, container) ?? undefined;
     const summary =
       textBits.find((text) => text.length >= 40 && text !== publishedLabel) ??
       textBits.find((text) => text !== publishedLabel) ??

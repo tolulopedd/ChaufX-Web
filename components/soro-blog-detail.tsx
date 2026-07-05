@@ -40,18 +40,6 @@ export function SoroBlogDetail({ post }: SoroBlogDetailProps) {
         </Link>
 
         <div className="mt-6 overflow-hidden rounded-[32px] border border-[#E5E7EB] bg-white shadow-[0_36px_90px_-60px_rgba(15,23,42,0.26)]">
-          <div className="border-b border-[#EEF2F7] bg-[linear-gradient(180deg,#FFFFFF_0%,#F8FAFC_100%)] px-6 py-8 md:px-10 md:py-10">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">
-              ChaufX Editorial
-            </div>
-            <h1 className="mt-4 max-w-3xl text-3xl font-semibold tracking-[-0.06em] text-[#0F172A] md:text-[3rem] md:leading-[1.02]">
-              Practical reads, cleaner insights, and useful updates.
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 md:text-[1rem]">
-              Insights, guidance, and practical updates from the ChaufX team.
-            </p>
-          </div>
-
           <div className="px-5 py-8 md:px-10 md:py-12">
             <div className="editorial-shell mx-auto max-w-3xl">
               <div id="soro-blog" />
