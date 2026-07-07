@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   Animated,
   Image,
@@ -26,6 +27,7 @@ import {
   fetchMapState,
   fetchProfile,
   login,
+  requestPasswordReset,
   type Session
 } from "./src/lib/api";
 
@@ -323,8 +325,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState("");
-  const [loginEmail, setLoginEmail] = useState("owner@chaufx.app");
-  const [loginPassword, setLoginPassword] = useState("OwnerPass123$");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [passwordResetBusy, setPasswordResetBusy] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [mapState, setMapState] = useState<any>(null);
@@ -507,6 +511,7 @@ export default function App() {
 
   async function handleLogin() {
     setBusy(true);
+    setStatus("");
     try {
       const nextSession = await login(loginEmail.trim(), loginPassword);
       setSession(nextSession);
@@ -515,6 +520,25 @@ export default function App() {
       setStatus(error instanceof Error ? error.message : "Unable to sign in.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleRequestPasswordReset() {
+    const email = loginEmail.trim();
+    if (!email) {
+      setStatus("Enter your email address to request a password reset.");
+      return;
+    }
+
+    setPasswordResetBusy(true);
+    try {
+      await requestPasswordReset(email);
+      setStatus("If the account exists, a password reset link has been sent to the email address.");
+      Alert.alert("Reset link sent", "If the account exists, a password reset link has been sent to the email address.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to request a password reset.");
+    } finally {
+      setPasswordResetBusy(false);
     }
   }
 
@@ -695,40 +719,64 @@ export default function App() {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
-        <View style={[styles.loginWrap, { paddingTop: Math.max(insets.top, 18) + 20 }]}>
-          <View style={styles.loginPanel}>
-            <Image source={logo} style={styles.loginLogo} resizeMode="contain" />
-            <Text style={styles.loginEyebrow}>CHAUFX CANADA</Text>
-            <Text style={styles.loginTitle}>Book your driver in a few taps.</Text>
-            <Text style={styles.loginCopy}>
-              Rquest for driver, and choose whether you need the service now or later.
-            </Text>
+        <KeyboardAvoidingView
+          style={styles.keyboardWrap}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        >
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={[
+              styles.contentGrow,
+              styles.loginWrap,
+              { paddingTop: Math.max(insets.top, 18) + 20 }
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            <View style={styles.loginPanel}>
+              <Image source={logo} style={styles.loginLogo} resizeMode="contain" />
+              <Text style={styles.loginEyebrow}>CHAUFX CANADA</Text>
+              <Text style={styles.loginTitle}>Book your driver in a few taps.</Text>
+              <Text style={styles.loginCopy}>
+                Request a driver and choose whether you need the service now or later.
+              </Text>
 
-            <View style={styles.loginCard}>
-              <TextInput
-                placeholder="owner@chaufx.app"
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="none"
-                style={styles.input}
-                value={loginEmail}
-                onChangeText={setLoginEmail}
-              />
-              <TextInput
-                placeholder="Password"
-                placeholderTextColor="#94A3B8"
-                secureTextEntry
-                style={styles.input}
-                value={loginPassword}
-                onChangeText={setLoginPassword}
-              />
-              <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
-                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
-              </Pressable>
+              <View style={styles.loginCard}>
+                <TextInput
+                  placeholder="Enter your email"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  style={styles.input}
+                  value={loginEmail}
+                  onChangeText={setLoginEmail}
+                />
+                <View style={styles.passwordFieldRow}>
+                  <TextInput
+                    placeholder="Enter your password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry={!showLoginPassword}
+                    style={styles.passwordInput}
+                    value={loginPassword}
+                    onChangeText={setLoginPassword}
+                  />
+                  <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
+                    <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
+                  </Pressable>
+                </View>
+                <Pressable disabled={passwordResetBusy} onPress={handleRequestPasswordReset}>
+                  <Text style={styles.linkText}>{passwordResetBusy ? "Sending reset link..." : "Forgot password?"}</Text>
+                </Pressable>
+                <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
+                  {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
+                </Pressable>
+              </View>
+
+              {status ? <Text style={styles.statusText}>{status}</Text> : null}
             </View>
-
-            {status ? <Text style={styles.statusText}>{status}</Text> : null}
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -1323,6 +1371,29 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     color: "#0F172A",
     fontSize: 16
+  },
+  passwordFieldRow: {
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    paddingLeft: 16,
+    paddingRight: 14,
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12
+  },
+  passwordInput: {
+    flex: 1,
+    color: "#0F172A",
+    fontSize: 16,
+    paddingVertical: 14
+  },
+  passwordToggleText: {
+    color: "#2563EB",
+    fontSize: 14,
+    fontWeight: "700"
   },
   secondaryButton: {
     borderRadius: 18,
