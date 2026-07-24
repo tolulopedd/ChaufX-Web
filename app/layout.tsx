@@ -5,9 +5,12 @@ export const metadata: Metadata = {
   title: "ChaufX Canada",
   description: "Personal driver platform for vehicle owners, drivers, and operators.",
   icons: {
-    icon: "/icon.png?v=4",
-    shortcut: "/icon.png?v=4",
-    apple: "/icon.png?v=4"
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.png?v=8", type: "image/png" }
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png?v=8"
   }
 };
 

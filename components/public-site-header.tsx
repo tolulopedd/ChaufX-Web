@@ -1,8 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { AdminBrand } from "./admin-brand";
 
 const menus = [
   {
@@ -66,7 +66,16 @@ export function PublicSiteHeader() {
   return (
     <header className="rounded-[28px] border border-white/10 bg-[#081120]/84 px-6 py-5 backdrop-blur">
       <div className="flex items-center justify-between gap-4">
-        <AdminBrand href="/" theme="dark" />
+        <Link href="/" className="relative block h-10 w-[172px] shrink-0 md:h-11 md:w-[224px]" aria-label="ChaufX home">
+          <Image
+            src="/chaufx-wordmark-header.png?v=1"
+            alt="ChaufX"
+            fill
+            sizes="(min-width: 768px) 224px, 172px"
+            className="object-contain object-left"
+            priority
+          />
+        </Link>
 
         <nav className="hidden flex-wrap gap-5 text-sm font-semibold text-white/70 md:flex">
           {menus.map((menu) => (
