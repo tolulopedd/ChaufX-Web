@@ -87,6 +87,17 @@ export function ReportsIcon({ className }: IconProps) {
   );
 }
 
+export function SettlementsIcon({ className }: IconProps) {
+  return (
+    <IconBase className={className}>
+      <rect x="3" y="5" width="18" height="14" rx="3" />
+      <path d="M7 10h10" />
+      <path d="M7 14h6" />
+      <circle cx="17" cy="14" r="1.5" />
+    </IconBase>
+  );
+}
+
 export function MessagesIcon({ className }: IconProps) {
   return (
     <IconBase className={className}>

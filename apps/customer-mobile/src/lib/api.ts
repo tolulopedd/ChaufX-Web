@@ -169,6 +169,26 @@ export function createBooking(token: string, payload: Record<string, unknown>) {
   });
 }
 
+export function createCheckoutSession(token: string, bookingId: string, payload: Record<string, unknown>) {
+  return request<any>(`/payments/${bookingId}/checkout-session`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function syncBookingPayment(token: string, bookingId: string) {
+  return request<any>(`/payments/${bookingId}/sync`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({})
+  });
+}
+
 export function fetchBookingEstimate(token: string, payload: Record<string, unknown>) {
   return request<any>("/bookings/estimate", {
     method: "POST",

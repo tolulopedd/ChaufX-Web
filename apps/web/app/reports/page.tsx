@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
 import {
   EmptyState,
-  StatCard,
   StatusPill,
   adminInputClass,
   adminPrimaryButtonClass
@@ -65,42 +64,6 @@ export default function ReportsPage() {
   const pendingPayments = useMemo(
     () => data.payments.filter((payment: any) => String(payment.status).toUpperCase() === "PENDING"),
     [data.payments]
-  );
-
-  const summaryCards = useMemo(
-    () => [
-      {
-        title: "Approved drivers",
-        value: data.approvedDrivers.length,
-        detail: "Approved driver accounts."
-      },
-      {
-        title: "Pending onboarding",
-        value: data.pendingApplications.length,
-        detail: "Applications awaiting action."
-      },
-      {
-        title: "Active customers",
-        value: data.activeCustomers.filter((customer: any) => customer.bookings.length > 0).length,
-        detail: "Customers with booking activity."
-      },
-      {
-        title: "Pending driver payments",
-        value: pendingPayments.length,
-        detail: "Pending payment records."
-      },
-      {
-        title: "Trips completed",
-        value: data.completedTrips.length,
-        detail: "Completed bookings."
-      },
-      {
-        title: "Booked or scheduled",
-        value: data.scheduledTrips.length,
-        detail: "Upcoming and in-progress bookings."
-      }
-    ],
-    [data.activeCustomers, data.approvedDrivers.length, data.completedTrips.length, data.pendingApplications.length, data.scheduledTrips.length, pendingPayments.length]
   );
 
   const rows = useMemo<ReportRow[]>(() => {
@@ -267,12 +230,6 @@ export default function ReportsPage() {
 
   return (
     <AdminShell title="Reports" description="Onboarding, trip, payment, and rating reports.">
-      <div className="grid gap-4 xl:grid-cols-3">
-        {summaryCards.map((card, index) => (
-          <StatCard key={card.title} title={card.title} value={card.value} detail={card.detail} tone={index === 3 ? "dark" : "light"} />
-        ))}
-      </div>
-
       <Panel
         title="Report filters"
         subtitle="Refine the report view and export the current results as a PDF."
@@ -286,6 +243,16 @@ export default function ReportsPage() {
           </button>
         }
       >
+        <div className="mb-5 flex flex-col gap-3 rounded-[18px] border border-[#EEF2F7] bg-[#FBFCFE] px-4 py-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Current view</div>
+            <div className="mt-1 text-base font-semibold tracking-[-0.03em] text-slate-950">{selectedReportLabel}</div>
+          </div>
+          <div className="text-sm text-slate-500">
+            {filteredRows.length} record{filteredRows.length === 1 ? "" : "s"} ready for review or export.
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Report type</span>
@@ -329,15 +296,17 @@ export default function ReportsPage() {
           </label>
         </div>
 
-        <label className="mt-4 block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Search</span>
-          <input
-            className={adminInputClass}
-            placeholder="Search names, emails, routes, or booking notes"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+        <div className="mt-5 border-t border-[#F1F5F9] pt-5">
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Search</span>
+            <input
+              className={adminInputClass}
+              placeholder="Search names, emails, routes, or booking notes"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+        </div>
       </Panel>
 
       <Panel
@@ -349,11 +318,11 @@ export default function ReportsPage() {
         {filteredRows.length ? (
           <div className="space-y-3">
             {filteredRows.map((row) => (
-            <div key={row.id} className="flex flex-col gap-3 rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3.5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0 flex-1">
+              <div key={row.id} className="flex flex-col gap-3 rounded-[18px] border border-[#E5E7EB] bg-[#FBFCFE] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 flex-1">
                   <div className="text-[0.95rem] font-semibold tracking-[-0.03em] text-slate-950">{row.title}</div>
                   <div className="mt-1 text-sm text-slate-500">{row.subtitle}</div>
-                  <div className="mt-1.5 text-sm text-slate-600">{row.meta}</div>
+                  <div className="mt-1 text-sm text-slate-600">{row.meta}</div>
                 </div>
                 <div className="flex flex-col items-start gap-1.5 lg:items-end">
                   <StatusPill
@@ -368,7 +337,7 @@ export default function ReportsPage() {
                             : "violet"
                     }
                   />
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                  <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-400">
                     {row.dateLabel}: {formatDateLabel(row.dateValue)}
                   </div>
                 </div>
@@ -384,7 +353,7 @@ export default function ReportsPage() {
         {data.ratings.length ? (
           <div className="grid gap-3 lg:grid-cols-2">
             {data.ratings.slice(0, 6).map((rating: any) => (
-              <div key={rating.id} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4">
+              <div key={rating.id} className="rounded-[20px] border border-[#E5E7EB] bg-[#FBFCFE] px-4 py-4">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-semibold text-slate-950">{rating.reviewed?.fullName ?? "Reviewed driver"}</div>
                   <StatusPill label={`${rating.score}/5`} tone="violet" />

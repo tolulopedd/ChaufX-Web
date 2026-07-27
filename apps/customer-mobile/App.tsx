@@ -5,6 +5,8 @@ import {
   Animated,
   Image,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -22,12 +24,14 @@ import { formatDateTime } from "@chaufx/ui";
 import {
   cancelBooking,
   createBooking,
+  createCheckoutSession,
   fetchBookingEstimate,
   fetchBookings,
   fetchMapState,
   fetchProfile,
   login,
   requestPasswordReset,
+  syncBookingPayment,
   type Session
 } from "./src/lib/api";
 
@@ -36,6 +40,10 @@ type ScheduleMode = "now" | "later";
 type BookingRequestType = "NOW" | "LATER";
 type Coordinate = { latitude: number; longitude: number };
 type SearchField = "pickup" | "destination";
+type WheelOption = {
+  value: number;
+  label: string;
+};
 type PlaceSuggestion = {
   id: string;
   label: string;
@@ -44,7 +52,10 @@ type PlaceSuggestion = {
 };
 
 const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
-const logo = require("./assets/dm-logo-light.png");
+const logo = require("./assets/chaufx-mark.png");
+const paymentCompleteUrl = "ca.chaufx.customer://payment-complete";
+const paymentCancelledUrl = "ca.chaufx.customer://payment-cancelled";
+const TRIP_HISTORY_DAYS = 7;
 
 function getDefaultScheduledTime() {
   const date = new Date(Date.now() + 90 * 60 * 1000);
@@ -73,8 +84,40 @@ function formatTimeLabel(value: string) {
     : parsed.toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" });
 }
 
+function toDateValue(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
 function clampDurationHours(value: number) {
   return Math.max(2, Math.min(24, Math.floor(value)));
+}
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function parseDateParts(value: string) {
+  const parsed = new Date(`${value}T12:00:00`);
+  const fallback = new Date();
+  const date = Number.isNaN(parsed.getTime()) ? fallback : parsed;
+
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth(),
+    day: date.getDate()
+  };
+}
+
+function parseTimeParts(value: string) {
+  const [hourValue, minuteValue] = value.split(":").map(Number);
+  return {
+    hour: Number.isFinite(hourValue) ? hourValue : 0,
+    minute: Number.isFinite(minuteValue) ? minuteValue : 0
+  };
 }
 
 async function searchPlaces(query: string, currentLocation: Coordinate | null) {
@@ -145,9 +188,23 @@ function toneColor(status?: string) {
   const normalized = String(status ?? "").toLowerCase();
   if (["active", "completed"].includes(normalized)) return "#16A34A";
   if (["accepted", "enroute"].includes(normalized)) return "#2563EB";
-  if (normalized === "pending") return "#D97706";
+  if (["awaiting_payment", "pending"].includes(normalized)) return "#D97706";
   if (normalized === "cancelled") return "#DC2626";
   return "#2563EB";
+}
+
+function isVisibleTripHistoryItem(booking: any) {
+  const normalized = String(booking.status ?? "").toLowerCase();
+  if (!["completed", "cancelled"].includes(normalized)) {
+    return true;
+  }
+
+  const historyDate = new Date(booking.completedAt ?? booking.updatedAt ?? booking.scheduledStartAt);
+  if (Number.isNaN(historyDate.getTime())) {
+    return false;
+  }
+
+  return Date.now() - historyDate.getTime() <= TRIP_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function Marker({ color, variant }: { color: string; variant: "current" | "pickup" | "destination" }) {
@@ -228,17 +285,19 @@ function buildCameraProps(points: Coordinate[], fallback: Coordinate) {
 function MapSurface({
   currentLocation,
   pickup,
-  destination
+  destination,
+  interactive = false,
+  onPress
 }: {
   currentLocation: Coordinate | null;
   pickup: Coordinate | null;
   destination: Coordinate | null;
+  interactive?: boolean;
+  onPress?: () => void;
 }) {
   const center = pickup ?? currentLocation ?? { latitude: 49.8951, longitude: -97.1384 };
-  const cameraProps = buildCameraProps(
-    [currentLocation, pickup, destination].filter(Boolean) as Coordinate[],
-    center
-  );
+  const cameraPoints = destination ? [pickup ?? currentLocation ?? center, destination] : [center];
+  const cameraProps = buildCameraProps(cameraPoints, center);
   const [routeShape, setRouteShape] = useState<any>(null);
 
   useEffect(() => {
@@ -284,10 +343,11 @@ function MapSurface({
       compassEnabled={false}
       logoEnabled={false}
       attributionEnabled={false}
-      scrollEnabled={false}
-      zoomEnabled={false}
-      rotateEnabled={false}
-      pitchEnabled={false}
+      scrollEnabled={interactive}
+      zoomEnabled={interactive}
+      rotateEnabled={interactive}
+      pitchEnabled={interactive}
+      onPress={onPress}
     >
       <Mapbox.Camera {...cameraProps} />
       {currentLocation ? (
@@ -334,18 +394,21 @@ export default function App() {
   const [mapState, setMapState] = useState<any>(null);
   const [estimate, setEstimate] = useState<any>(null);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
-  const [locationPending, setLocationPending] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<Coordinate | null>(null);
   const [activeSearchField, setActiveSearchField] = useState<SearchField | null>(null);
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
+  const [showScheduleDatePicker, setShowScheduleDatePicker] = useState(false);
+  const [showScheduleTimePicker, setShowScheduleTimePicker] = useState(false);
+  const [fullScreenMapVisible, setFullScreenMapVisible] = useState(false);
+  const pickupManuallyEditedRef = useRef(false);
   const [form, setForm] = useState({
-    pickupLocation: "201 Portage Ave, Winnipeg",
-    pickupLat: "49.8959",
-    pickupLng: "-97.1385",
-    destinationLocation: "The Forks, Winnipeg",
-    destinationLat: "49.8870",
-    destinationLng: "-97.1318",
+    pickupLocation: "",
+    pickupLat: "",
+    pickupLng: "",
+    destinationLocation: "",
+    destinationLat: "",
+    destinationLng: "",
     scheduledDate: defaults.date,
     scheduledTime: defaults.time,
     durationHours: 2,
@@ -353,6 +416,7 @@ export default function App() {
     vehicleDetails: "Toyota Camry - midnight blue",
     zoneCode: "WPG-CENTRAL"
   });
+  const isAndroidLoginMode = Platform.OS === "android";
 
   useEffect(() => {
     if (mapboxToken) {
@@ -374,6 +438,40 @@ export default function App() {
     }
 
     primeCurrentLocation();
+  }, [session]);
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    const handlePaymentReturn = async (url: string | null) => {
+      if (!url || (!url.includes("payment-complete") && !url.includes("payment-cancelled"))) {
+        return;
+      }
+
+      const bookingId = url.match(/[?&]bookingId=([^&]+)/)?.[1];
+      if (bookingId && url.includes("payment-complete")) {
+        try {
+          await syncBookingPayment(session.accessToken, decodeURIComponent(bookingId));
+          setStatus("Payment recorded. We are now matching your booking with nearby drivers.");
+        } catch {
+          setStatus("Payment received. Refreshing your booking status.");
+        }
+      } else if (url.includes("payment-cancelled")) {
+        setStatus("Payment was cancelled. You can try again from Trips.");
+      }
+
+      setTab("trips");
+      await refreshDashboard();
+    };
+
+    Linking.getInitialURL().then(handlePaymentReturn).catch(() => undefined);
+    const subscription = Linking.addEventListener("url", (event) => {
+      handlePaymentReturn(event.url).catch(() => undefined);
+    });
+
+    return () => subscription.remove();
   }, [session]);
 
   useEffect(() => {
@@ -440,13 +538,67 @@ export default function App() {
   }, [form.pickupLat, form.pickupLng]);
 
   const destinationCoordinate = useMemo<Coordinate | null>(() => {
+    if (!form.destinationLocation.trim()) {
+      return null;
+    }
+
     const latitude = Number(form.destinationLat);
     const longitude = Number(form.destinationLng);
     return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
-  }, [form.destinationLat, form.destinationLng]);
+  }, [form.destinationLat, form.destinationLng, form.destinationLocation]);
+
+  const selectedDateParts = useMemo(() => parseDateParts(form.scheduledDate), [form.scheduledDate]);
+  const selectedTimeParts = useMemo(() => parseTimeParts(form.scheduledTime), [form.scheduledTime]);
+  const androidMonthOptions = useMemo<WheelOption[]>(
+    () =>
+      Array.from({ length: 12 }, (_, month) => ({
+        value: month,
+        label: new Date(2026, month, 1).toLocaleDateString("en-CA", { month: "short" })
+      })),
+    []
+  );
+  const androidYearOptions = useMemo<WheelOption[]>(() => {
+    const startYear = new Date().getFullYear();
+    return Array.from({ length: 4 }, (_, index) => {
+      const year = startYear + index;
+      return { value: year, label: String(year) };
+    });
+  }, []);
+  const androidDayOptions = useMemo<WheelOption[]>(() => {
+    const totalDays = getDaysInMonth(selectedDateParts.year, selectedDateParts.month);
+    return Array.from({ length: totalDays }, (_, index) => ({
+      value: index + 1,
+      label: String(index + 1).padStart(2, "0")
+    }));
+  }, [selectedDateParts.month, selectedDateParts.year]);
+  const androidHourOptions = useMemo<WheelOption[]>(
+    () =>
+      Array.from({ length: 24 }, (_, hour) => ({
+        value: hour,
+        label: String(hour).padStart(2, "0")
+      })),
+    []
+  );
+  const androidMinuteOptions = useMemo<WheelOption[]>(
+    () =>
+      Array.from({ length: 60 }, (_, minute) => ({
+        value: minute,
+        label: String(minute).padStart(2, "0")
+      })),
+    []
+  );
 
   const activeBooking = bookings.find((booking) =>
-    ["pending", "accepted", "enroute", "active"].includes(String(booking.status).toLowerCase())
+    ["awaiting_payment", "pending", "accepted", "enroute", "active"].includes(String(booking.status).toLowerCase())
+  );
+  const visibleTripHistory = useMemo(
+    () => bookings.filter((booking) => booking.id !== activeBooking?.id && isVisibleTripHistoryItem(booking)),
+    [activeBooking?.id, bookings]
+  );
+  const awaitingPaymentBooking = bookings.find(
+    (booking) =>
+      String(booking.status).toLowerCase() === "awaiting_payment" &&
+      String(booking.payment?.status ?? "").toLowerCase() !== "recorded"
   );
 
   async function refreshDashboard() {
@@ -492,8 +644,8 @@ export default function App() {
       }
 
       const current =
-        (await Location.getLastKnownPositionAsync()) ??
-        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null)) ??
+        (await Location.getLastKnownPositionAsync());
 
       if (!current) {
         return;
@@ -504,6 +656,29 @@ export default function App() {
         longitude: current.coords.longitude
       };
       setCurrentLocation(coords);
+
+      const reverse = await Location.reverseGeocodeAsync(coords);
+      const label = reverse[0]
+        ? [
+            reverse[0].name,
+            reverse[0].street,
+            reverse[0].city,
+            reverse[0].region
+          ]
+            .filter(Boolean)
+            .join(", ")
+        : `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+
+      setForm((currentForm) =>
+        pickupManuallyEditedRef.current
+          ? currentForm
+          : {
+              ...currentForm,
+              pickupLocation: label,
+              pickupLat: String(coords.latitude),
+              pickupLng: String(coords.longitude)
+            }
+      );
     } catch {
       // Keep the map usable even if device location isn't available yet.
     }
@@ -542,63 +717,122 @@ export default function App() {
     }
   }
 
-  async function handleUseCurrentLocation() {
-    setLocationPending(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") {
-        setStatus("Location access is needed to confirm your pickup point.");
-        return;
-      }
-
-      const current =
-        (await Location.getLastKnownPositionAsync()) ??
-        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
-
-      if (!current) {
-        setStatus("We could not read your current position yet.");
-        return;
-      }
-
-      const coords = {
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude
-      };
-      setCurrentLocation(coords);
-
-      const reverse = await Location.reverseGeocodeAsync(coords);
-      const label = reverse[0]
-        ? [reverse[0].name, reverse[0].city].filter(Boolean).join(", ")
-        : `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
-
-      setForm((currentForm) => ({
-        ...currentForm,
-        pickupLocation: label,
-        pickupLat: String(coords.latitude),
-        pickupLng: String(coords.longitude)
-      }));
-      setActiveSearchField(null);
-      setSuggestions([]);
-      setStatus("Pickup updated from your current location.");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to get your current location.");
-    } finally {
-      setLocationPending(false);
+  function handleDateChange(event: any, nextDate?: Date) {
+    if (Platform.OS === "android") {
+      setShowScheduleDatePicker(false);
     }
-  }
-
-  function handleDateChange(_event: unknown, nextDate: Date) {
+    if (event.type !== "set" || !nextDate) {
+      return;
+    }
     setForm((currentForm) => ({
       ...currentForm,
       scheduledDate: nextDate.toISOString().slice(0, 10)
     }));
   }
 
-  function handleTimeChange(_event: unknown, nextTime: Date) {
+  function handleTimeChange(event: any, nextTime?: Date) {
+    if (Platform.OS === "android") {
+      setShowScheduleTimePicker(false);
+    }
+    if (event.type !== "set" || !nextTime) {
+      return;
+    }
     setForm((currentForm) => ({
       ...currentForm,
       scheduledTime: `${String(nextTime.getHours()).padStart(2, "0")}:${String(nextTime.getMinutes()).padStart(2, "0")}`
     }));
+  }
+
+  function closeAndroidSchedulePicker() {
+    setShowScheduleDatePicker(false);
+    setShowScheduleTimePicker(false);
+  }
+
+  function selectAndroidDatePart(part: "month" | "day" | "year", value: number) {
+    const next = { ...selectedDateParts, [part]: value };
+    const day = Math.min(next.day, getDaysInMonth(next.year, next.month));
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      scheduledDate: toDateValue(new Date(next.year, next.month, day, 12, 0, 0))
+    }));
+  }
+
+  function selectAndroidTimePart(part: "hour" | "minute", value: number) {
+    const next = { ...selectedTimeParts, [part]: value };
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      scheduledTime: `${String(next.hour).padStart(2, "0")}:${String(next.minute).padStart(2, "0")}`
+    }));
+  }
+
+  function renderAndroidWheelColumn(
+    label: string,
+    options: WheelOption[],
+    selectedValue: number,
+    onSelect: (value: number) => void
+  ) {
+    return (
+      <View style={styles.androidWheelColumn}>
+        <Text style={styles.androidWheelLabel}>{label}</Text>
+        <ScrollView
+          style={styles.androidWheelScroll}
+          contentContainerStyle={styles.androidWheelContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {options.map((option) => {
+            const selected = option.value === selectedValue;
+
+            return (
+              <Pressable
+                key={`${label}-${option.value}`}
+                style={[styles.androidWheelItem, selected && styles.androidWheelItemActive]}
+                onPress={() => onSelect(option.value)}
+              >
+                <Text style={[styles.androidWheelItemText, selected && styles.androidWheelItemTextActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  async function openCheckoutForBooking(bookingId: string, manageBusy = true) {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    if (manageBusy) {
+      setBusy(true);
+    }
+
+    try {
+      const checkout = await createCheckoutSession(session.accessToken, bookingId, {
+        successReturnUrl: paymentCompleteUrl,
+        cancelReturnUrl: paymentCancelledUrl
+      });
+
+      if (checkout.alreadyPaid) {
+        setStatus("Payment has already been recorded for this booking.");
+        await refreshDashboard();
+        return;
+      }
+
+      if (!checkout.checkoutUrl) {
+        throw new Error("Stripe checkout is not available for this booking yet.");
+      }
+
+      setStatus("Opening secure Stripe checkout.");
+      await Linking.openURL(checkout.checkoutUrl);
+    } finally {
+      if (manageBusy) {
+        setBusy(false);
+      }
+    }
   }
 
   async function submitBooking(nextMode: ScheduleMode) {
@@ -623,7 +857,7 @@ export default function App() {
       const destinationPoint = destinationGeocode[0] ?? null;
 
       if (!pickupPoint) {
-        throw new Error("Please enter a pickup address we can locate or use your current location.");
+        throw new Error("Please enter a pickup address we can locate.");
       }
 
       if (!destinationPoint) {
@@ -643,7 +877,7 @@ export default function App() {
           ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
           : toIso(form.scheduledDate, form.scheduledTime);
 
-      await createBooking(session.accessToken, {
+      const result = await createBooking(session.accessToken, {
         requestType: (nextMode === "now" ? "NOW" : "LATER") satisfies BookingRequestType,
         pickupLocation: form.pickupLocation,
         pickupLat: pickupPoint.latitude,
@@ -658,9 +892,15 @@ export default function App() {
         zoneCode: form.zoneCode
       });
 
-      setStatus(nextMode === "now" ? "ChaufX request submitted." : "Scheduled drive submitted.");
+      const bookingId = result?.booking?.id ?? result?.id;
+      if (!bookingId) {
+        throw new Error("Booking was created, but checkout could not be started. Please refresh and try again.");
+      }
+
+      setStatus("Booking created. Complete payment to start driver matching.");
       setTab("trips");
       await refreshDashboard();
+      await openCheckoutForBooking(bookingId, false);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to submit your booking.");
     } finally {
@@ -695,7 +935,91 @@ export default function App() {
     setStatus("");
   }
 
+  async function handleRefreshPayment(bookingId: string) {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await syncBookingPayment(session.accessToken, bookingId);
+      setStatus("Payment status refreshed.");
+      await refreshDashboard();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to refresh payment status.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function renderPaymentBlock(booking: any) {
+    const bookingStatus = String(booking.status ?? "").toLowerCase();
+    const paymentStatus = String(booking.payment?.status ?? "").toLowerCase();
+    const isPaid = paymentStatus === "recorded";
+    const needsPayment = !isPaid && bookingStatus === "awaiting_payment";
+
+    if (!isPaid && !needsPayment) {
+      return null;
+    }
+
+    const amount = Number(booking.payment?.amount ?? booking.fareEstimate ?? 0);
+
+    return (
+      <View style={styles.paymentBlock}>
+        <View style={styles.paymentHeader}>
+          <Text style={styles.paymentLabel}>Payment</Text>
+          <Text style={[styles.paymentStatus, isPaid ? styles.paymentStatusPaid : styles.paymentStatusDue]}>
+            {isPaid ? "Paid" : "Required"}
+          </Text>
+        </View>
+        <Text style={styles.paymentAmount}>${amount.toFixed(2)} CAD</Text>
+        <Text style={styles.paymentCopy}>
+          {isPaid
+            ? "Your payment has been recorded for this booking."
+            : "Complete payment securely before driver matching begins."}
+        </Text>
+        {needsPayment ? (
+          <View style={styles.paymentActions}>
+            <Pressable
+              style={[styles.paymentPrimaryButton, busy && styles.buttonDisabled]}
+              disabled={busy}
+              onPress={() => openCheckoutForBooking(booking.id)}
+            >
+              <Text style={styles.paymentPrimaryText}>Pay now</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.paymentSecondaryButton, busy && styles.buttonDisabled]}
+              disabled={busy}
+              onPress={() => handleRefreshPayment(booking.id)}
+            >
+              <Text style={styles.paymentSecondaryText}>Refresh</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  function renderMapLegend() {
+    return (
+      <View style={styles.mapLegend}>
+        <View style={styles.mapLegendPill}>
+          <View style={[styles.legendPulse, { backgroundColor: "#F97316" }]} />
+          <Text style={styles.mapLegendText}>Pickup</Text>
+        </View>
+        <View style={styles.mapLegendPill}>
+          <View style={[styles.legendDiamond, { backgroundColor: "#2563EB" }]} />
+          <Text style={styles.mapLegendText}>Dropoff</Text>
+        </View>
+      </View>
+    );
+  }
+
   function applySuggestion(field: SearchField, suggestion: PlaceSuggestion) {
+    if (field === "pickup") {
+      pickupManuallyEditedRef.current = true;
+    }
+
     setForm((currentForm) =>
       field === "pickup"
         ? {
@@ -716,67 +1040,102 @@ export default function App() {
   }
 
   if (!session) {
+    const loginPanel = (
+      <View
+        style={[
+          styles.loginPanel,
+          isAndroidLoginMode ? styles.loginPanelCompact : null,
+          isAndroidLoginMode ? styles.loginPanelAndroid : null
+        ]}
+      >
+        <Image
+          source={logo}
+          style={[styles.loginLogo, isAndroidLoginMode ? styles.loginLogoCompact : null]}
+          resizeMode="contain"
+        />
+        <Text style={[styles.loginEyebrow, isAndroidLoginMode ? styles.loginEyebrowCompact : null]}>
+          CHAUFX CANADA
+        </Text>
+        <Text style={[styles.loginTitle, isAndroidLoginMode ? styles.loginTitleCompact : null]}>Welcome</Text>
+
+        <View style={[styles.loginCard, isAndroidLoginMode ? styles.loginCardCompact : null]}>
+          <TextInput
+            placeholder="Enter your email"
+            placeholderTextColor="#94A3B8"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            style={styles.input}
+            value={loginEmail}
+            onChangeText={setLoginEmail}
+            showSoftInputOnFocus={isAndroidLoginMode}
+          />
+          <View style={styles.passwordFieldRow}>
+            <TextInput
+              placeholder="Enter your password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry={!showLoginPassword}
+              style={styles.passwordInput}
+              value={loginPassword}
+              onChangeText={setLoginPassword}
+              showSoftInputOnFocus={isAndroidLoginMode}
+            />
+            <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
+              <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
+            </Pressable>
+          </View>
+          <Pressable disabled={passwordResetBusy} onPress={handleRequestPasswordReset}>
+            <Text style={styles.linkText}>{passwordResetBusy ? "Sending reset link..." : "Forgot password?"}</Text>
+          </Pressable>
+          <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
+            {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
+          </Pressable>
+        </View>
+
+        {status ? <Text style={styles.statusText}>{status}</Text> : null}
+      </View>
+    );
+
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
-        <KeyboardAvoidingView
-          style={styles.keyboardWrap}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
-        >
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={[
-              styles.contentGrow,
-              styles.loginWrap,
-              { paddingTop: Math.max(insets.top, 18) + 20 }
+        {Platform.OS === "android" ? (
+          <View
+            style={[
+              styles.androidLoginShell,
+              {
+                paddingTop: Math.max(insets.top, 18) + 12,
+                paddingBottom: Math.max(insets.bottom, 20) + 20
+              }
             ]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
           >
-            <View style={styles.loginPanel}>
-              <Image source={logo} style={styles.loginLogo} resizeMode="contain" />
-              <Text style={styles.loginEyebrow}>CHAUFX CANADA</Text>
-              <Text style={styles.loginTitle}>Book your driver in a few taps.</Text>
-              <Text style={styles.loginCopy}>
-                Request a driver and choose whether you need the service now or later.
-              </Text>
-
-              <View style={styles.loginCard}>
-                <TextInput
-                  placeholder="Enter your email"
-                  placeholderTextColor="#94A3B8"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  style={styles.input}
-                  value={loginEmail}
-                  onChangeText={setLoginEmail}
-                />
-                <View style={styles.passwordFieldRow}>
-                  <TextInput
-                    placeholder="Enter your password"
-                    placeholderTextColor="#94A3B8"
-                    secureTextEntry={!showLoginPassword}
-                    style={styles.passwordInput}
-                    value={loginPassword}
-                    onChangeText={setLoginPassword}
-                  />
-                  <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
-                    <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
-                  </Pressable>
-                </View>
-                <Pressable disabled={passwordResetBusy} onPress={handleRequestPasswordReset}>
-                  <Text style={styles.linkText}>{passwordResetBusy ? "Sending reset link..." : "Forgot password?"}</Text>
-                </Pressable>
-                <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
-                  {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
-                </Pressable>
-              </View>
-
-              {status ? <Text style={styles.statusText}>{status}</Text> : null}
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+            {loginPanel}
+          </View>
+        ) : (
+          <KeyboardAvoidingView
+            style={styles.keyboardWrap}
+            behavior="padding"
+            keyboardVerticalOffset={8}
+          >
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={[
+                styles.contentGrow,
+                styles.loginWrap,
+                {
+                  paddingTop: Math.max(insets.top, 18) + 20,
+                  paddingBottom: Math.max(insets.bottom, 24) + 140
+                }
+              ]}
+              keyboardShouldPersistTaps="always"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+              scrollEnabled
+            >
+              {loginPanel}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        )}
       </SafeAreaView>
     );
   }
@@ -813,16 +1172,10 @@ export default function App() {
           <View style={styles.mapFrame} pointerEvents="none">
             <MapSurface currentLocation={currentLocation} pickup={pickupCoordinate} destination={destinationCoordinate} />
           </View>
-          <View style={styles.mapLegend}>
-            <View style={styles.mapLegendPill}>
-              <View style={[styles.legendPulse, { backgroundColor: "#F97316" }]} />
-              <Text style={styles.mapLegendText}>Pickup</Text>
-            </View>
-            <View style={styles.mapLegendPill}>
-              <View style={[styles.legendDiamond, { backgroundColor: "#2563EB" }]} />
-              <Text style={styles.mapLegendText}>Dropoff</Text>
-            </View>
-          </View>
+          <Pressable style={styles.mapTapLayer} onPress={() => setFullScreenMapVisible(true)}>
+            <Text style={styles.mapTapText}>Tap for full map</Text>
+          </Pressable>
+          {renderMapLegend()}
         </View>
 
         <View style={styles.tabRow}>
@@ -839,26 +1192,32 @@ export default function App() {
 
         {tab === "book" ? (
           <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Confirm pickup</Text>
-            <Text style={styles.helperText}>Type any address below or use your current location.</Text>
+            <Text style={styles.panelTitle}>Confirm pickup and destination address</Text>
             <View style={styles.fieldStack}>
-              <TextInput
-                style={styles.input}
-                value={form.pickupLocation}
-                onChangeText={(value) => {
-                  setForm((currentForm) => ({ ...currentForm, pickupLocation: value }));
-                  setActiveSearchField("pickup");
-                }}
-                onFocus={() => setActiveSearchField("pickup")}
-                placeholder="Pickup address"
-                placeholderTextColor="#94A3B8"
-              />
-              {activeSearchField === "pickup" ? (
+              <View style={styles.addressInputRow}>
+                <View style={styles.addressIconWrap}>
+                  <View style={styles.pickupAddressIcon} />
+                </View>
+                <TextInput
+                  style={styles.addressInput}
+                  value={form.pickupLocation}
+                  onChangeText={(value) => {
+                    pickupManuallyEditedRef.current = true;
+                    setForm((currentForm) => ({
+                      ...currentForm,
+                      pickupLocation: value,
+                      pickupLat: "",
+                      pickupLng: ""
+                    }));
+                    setActiveSearchField("pickup");
+                  }}
+                  onFocus={() => setActiveSearchField("pickup")}
+                  placeholder="Pickup address"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              {activeSearchField === "pickup" && suggestions.length > 0 ? (
                 <View style={styles.suggestionPanel}>
-                  {searching ? <Text style={styles.suggestionHint}>Searching addresses...</Text> : null}
-                  {!searching && suggestions.length === 0 ? (
-                    <Text style={styles.suggestionHint}>Keep typing to see address suggestions.</Text>
-                  ) : null}
                   {suggestions.map((suggestion) => (
                     <Pressable
                       key={suggestion.id}
@@ -870,26 +1229,29 @@ export default function App() {
                   ))}
                 </View>
               ) : null}
-              <Pressable style={styles.secondaryButton} onPress={handleUseCurrentLocation}>
-                <Text style={styles.secondaryButtonText}>{locationPending ? "Finding..." : "Use current location"}</Text>
-              </Pressable>
-              <TextInput
-                style={styles.input}
-                value={form.destinationLocation}
-                onChangeText={(value) => {
-                  setForm((currentForm) => ({ ...currentForm, destinationLocation: value }));
-                  setActiveSearchField("destination");
-                }}
-                onFocus={() => setActiveSearchField("destination")}
-                placeholder="Destination address"
-                placeholderTextColor="#94A3B8"
-              />
-              {activeSearchField === "destination" ? (
+              <View style={styles.addressInputRow}>
+                <View style={styles.addressIconWrap}>
+                  <View style={styles.destinationAddressIcon} />
+                </View>
+                <TextInput
+                  style={styles.addressInput}
+                  value={form.destinationLocation}
+                  onChangeText={(value) => {
+                    setForm((currentForm) => ({
+                      ...currentForm,
+                      destinationLocation: value,
+                      destinationLat: "",
+                      destinationLng: ""
+                    }));
+                    setActiveSearchField("destination");
+                  }}
+                  onFocus={() => setActiveSearchField("destination")}
+                  placeholder="Destination address"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              {activeSearchField === "destination" && suggestions.length > 0 ? (
                 <View style={styles.suggestionPanel}>
-                  {searching ? <Text style={styles.suggestionHint}>Searching addresses...</Text> : null}
-                  {!searching && suggestions.length === 0 ? (
-                    <Text style={styles.suggestionHint}>Keep typing to see address suggestions.</Text>
-                  ) : null}
                   {suggestions.map((suggestion) => (
                     <Pressable
                       key={suggestion.id}
@@ -920,7 +1282,7 @@ export default function App() {
             <Text style={styles.panelTitle}>Request ride</Text>
             <View style={styles.modeRow}>
               {[
-                ["now", "ChaufX now"],
+                ["now", "Book Now"],
                 ["later", "Schedule later"]
               ].map(([key, label]) => (
                 <Pressable
@@ -938,32 +1300,44 @@ export default function App() {
               {scheduleMode === "later" ? (
                 <View style={styles.scheduleCard}>
                   <View style={styles.schedulePickerCard}>
-                    <View style={styles.scheduleButton}>
-                      <Text style={styles.scheduleLabel}>Date</Text>
-                      <Text style={styles.scheduleValue}>{formatDateLabel(form.scheduledDate)}</Text>
-                    </View>
-                    <View style={styles.inlinePickerWrap}>
-                      <DateTimePicker
-                        mode="date"
-                        display={Platform.OS === "ios" ? "compact" : "default"}
-                        value={new Date(`${form.scheduledDate}T12:00:00`)}
-                        onValueChange={handleDateChange}
-                      />
-                    </View>
+                    {Platform.OS === "ios" ? (
+                      <View style={styles.inlinePickerWrapSolo}>
+                        <DateTimePicker
+                          mode="date"
+                          display="compact"
+                          value={new Date(`${form.scheduledDate}T12:00:00`)}
+                          onValueChange={handleDateChange}
+                        />
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={styles.scheduleButton}
+                        onPress={() => setShowScheduleDatePicker(true)}
+                      >
+                        <Text style={styles.scheduleLabel}>Date</Text>
+                        <Text style={styles.scheduleValue}>{formatDateLabel(form.scheduledDate)}</Text>
+                      </Pressable>
+                    )}
                   </View>
                   <View style={styles.schedulePickerCard}>
-                    <View style={styles.scheduleButton}>
-                      <Text style={styles.scheduleLabel}>Time</Text>
-                      <Text style={styles.scheduleValue}>{formatTimeLabel(form.scheduledTime)}</Text>
-                    </View>
-                    <View style={styles.inlinePickerWrap}>
-                      <DateTimePicker
-                        mode="time"
-                        display={Platform.OS === "ios" ? "compact" : "default"}
-                        value={new Date(`2026-01-01T${form.scheduledTime}:00`)}
-                        onValueChange={handleTimeChange}
-                      />
-                    </View>
+                    {Platform.OS === "ios" ? (
+                      <View style={styles.inlinePickerWrapSolo}>
+                        <DateTimePicker
+                          mode="time"
+                          display="compact"
+                          value={new Date(`2026-01-01T${form.scheduledTime}:00`)}
+                          onValueChange={handleTimeChange}
+                        />
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={styles.scheduleButton}
+                        onPress={() => setShowScheduleTimePicker(true)}
+                      >
+                        <Text style={styles.scheduleLabel}>Time</Text>
+                        <Text style={styles.scheduleValue}>{formatTimeLabel(form.scheduledTime)}</Text>
+                      </Pressable>
+                    )}
                   </View>
                 </View>
               ) : null}
@@ -1020,7 +1394,7 @@ export default function App() {
             </View>
 
             <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={() => submitBooking(scheduleMode)}>
-              <Text style={styles.primaryButtonText}>{scheduleMode === "now" ? "ChaufX now" : "Schedule a drive"}</Text>
+              <Text style={styles.primaryButtonText}>{scheduleMode === "now" ? "Book Now" : "Schedule a drive"}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -1033,9 +1407,9 @@ export default function App() {
                 <View style={styles.bookingHeader}>
                   <View style={styles.bookingTagRow}>
                     <Text style={[styles.bookingStatus, { color: toneColor(activeBooking.status) }]}>{String(activeBooking.status).toUpperCase()}</Text>
-                    <Text style={styles.requestTypeChip}>{activeBooking.requestType === "NOW" ? "ChaufX now" : "Schedule later"}</Text>
+                    <Text style={styles.requestTypeChip}>{activeBooking.requestType === "NOW" ? "Book Now" : "Schedule later"}</Text>
                   </View>
-                  {["pending", "accepted"].includes(String(activeBooking.status).toLowerCase()) ? (
+                  {["awaiting_payment", "pending", "accepted"].includes(String(activeBooking.status).toLowerCase()) ? (
                     <Pressable onPress={() => handleCancel(activeBooking.id)}>
                       <Text style={styles.linkText}>Cancel</Text>
                     </Pressable>
@@ -1051,20 +1425,27 @@ export default function App() {
                     </Text>
                   </View>
                 ) : null}
+                {String(activeBooking.status).toLowerCase() === "awaiting_payment" ? (
+                  <View style={styles.infoStrip}>
+                    <Text style={styles.infoStripText}>Complete payment before driver matching begins.</Text>
+                  </View>
+                ) : null}
+                {renderPaymentBlock(activeBooking)}
               </View>
             ) : (
               <Text style={styles.emptyText}>No active booking yet.</Text>
             )}
 
-            {bookings.filter((booking) => booking.id !== activeBooking?.id).map((booking) => (
+            {visibleTripHistory.map((booking) => (
               <View key={booking.id} style={styles.bookingCard}>
                 <View style={styles.bookingTagRow}>
                   <Text style={[styles.bookingStatus, { color: toneColor(booking.status) }]}>{String(booking.status).toUpperCase()}</Text>
-                  <Text style={styles.requestTypeChip}>{booking.requestType === "NOW" ? "ChaufX now" : "Schedule later"}</Text>
+                  <Text style={styles.requestTypeChip}>{booking.requestType === "NOW" ? "Book Now" : "Schedule later"}</Text>
                 </View>
                 <Text style={styles.bookingTitle}>{booking.pickupLocation}</Text>
                 <Text style={styles.bookingCopy}>{booking.destinationLocation}</Text>
                 <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartAt)}</Text>
+                {renderPaymentBlock(booking)}
               </View>
             ))}
           </View>
@@ -1090,6 +1471,111 @@ export default function App() {
           {status ? <Text style={styles.statusText}>{status}</Text> : null}
         </ScrollView>
       </KeyboardAvoidingView>
+      <Modal
+        visible={fullScreenMapVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setFullScreenMapVisible(false)}
+      >
+        <View style={styles.fullMapScreen}>
+          <MapSurface
+            currentLocation={currentLocation}
+            pickup={pickupCoordinate}
+            destination={destinationCoordinate}
+            interactive
+          />
+          {renderMapLegend()}
+          <Pressable style={[styles.fullMapClose, { top: Math.max(insets.top, 16) + 10 }]} onPress={() => setFullScreenMapVisible(false)}>
+            <Text style={styles.fullMapCloseText}>Close</Text>
+          </Pressable>
+        </View>
+      </Modal>
+      <Modal visible={Boolean(awaitingPaymentBooking)} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => undefined}>
+        <SafeAreaView style={styles.paymentGateScreen}>
+          {awaitingPaymentBooking ? (
+            <ScrollView
+              contentContainerStyle={styles.paymentGateContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.paymentGateCard}>
+                <View style={styles.bookingTagRow}>
+                  <Text style={[styles.bookingStatus, { color: toneColor(awaitingPaymentBooking.status) }]}>
+                    {String(awaitingPaymentBooking.status).replace("_", " ").toUpperCase()}
+                  </Text>
+                  <Text style={styles.requestTypeChip}>{awaitingPaymentBooking.requestType === "NOW" ? "Book Now" : "Schedule later"}</Text>
+                </View>
+                <Text style={styles.bookingTitle}>{awaitingPaymentBooking.pickupLocation}</Text>
+                <Text style={styles.bookingCopy}>{awaitingPaymentBooking.destinationLocation}</Text>
+                <Text style={styles.bookingMeta}>{formatDateTime(awaitingPaymentBooking.scheduledStartAt)}</Text>
+                {renderPaymentBlock(awaitingPaymentBooking)}
+                <Pressable
+                  style={[styles.paymentGateCancelButton, busy && styles.buttonDisabled]}
+                  disabled={busy}
+                  onPress={() => handleCancel(awaitingPaymentBooking.id)}
+                >
+                  <Text style={styles.paymentGateCancelText}>Cancel booking</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          ) : null}
+        </SafeAreaView>
+      </Modal>
+      {Platform.OS === "android" ? (
+        <Modal
+          transparent
+          visible={showScheduleDatePicker || showScheduleTimePicker}
+          animationType="fade"
+          onRequestClose={closeAndroidSchedulePicker}
+        >
+          <Pressable style={styles.androidPickerOverlay} onPress={closeAndroidSchedulePicker}>
+            <Pressable style={styles.androidPickerSheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.androidPickerHandle} />
+              <View style={styles.androidPickerHeader}>
+                <View>
+                  <Text style={styles.androidPickerEyebrow}>Schedule later</Text>
+                  <Text style={styles.androidPickerTitle}>
+                    {showScheduleDatePicker ? "Choose pickup date" : "Choose pickup time"}
+                  </Text>
+                </View>
+                <Pressable style={styles.androidPickerCloseButton} onPress={closeAndroidSchedulePicker}>
+                  <Text style={styles.androidPickerCloseText}>Close</Text>
+                </Pressable>
+              </View>
+              <View style={styles.androidWheelSummary}>
+                <Text style={styles.androidWheelSummaryText}>
+                  {showScheduleDatePicker ? formatDateLabel(form.scheduledDate) : formatTimeLabel(form.scheduledTime)}
+                </Text>
+              </View>
+              {showScheduleDatePicker ? (
+                <View style={styles.androidWheelRow}>
+                  {renderAndroidWheelColumn("Month", androidMonthOptions, selectedDateParts.month, (value) =>
+                    selectAndroidDatePart("month", value)
+                  )}
+                  {renderAndroidWheelColumn("Day", androidDayOptions, selectedDateParts.day, (value) =>
+                    selectAndroidDatePart("day", value)
+                  )}
+                  {renderAndroidWheelColumn("Year", androidYearOptions, selectedDateParts.year, (value) =>
+                    selectAndroidDatePart("year", value)
+                  )}
+                </View>
+              ) : (
+                <View style={styles.androidWheelRow}>
+                  {renderAndroidWheelColumn("Hour", androidHourOptions, selectedTimeParts.hour, (value) =>
+                    selectAndroidTimePart("hour", value)
+                  )}
+                  {renderAndroidWheelColumn("Minute", androidMinuteOptions, selectedTimeParts.minute, (value) =>
+                    selectAndroidTimePart("minute", value)
+                  )}
+                </View>
+              )}
+              <Pressable style={styles.androidPickerDoneButton} onPress={closeAndroidSchedulePicker}>
+                <Text style={styles.androidPickerDoneText}>Done</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -1116,43 +1602,80 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingBottom: 24,
-    justifyContent: "center"
+    justifyContent: "flex-start"
+  },
+  androidLoginShell: {
+    flex: 1,
+    paddingHorizontal: 20,
+    justifyContent: "flex-start"
   },
   loginPanel: {
     borderRadius: 28,
     backgroundColor: "#0F172A",
-    padding: 24,
-    gap: 14
+    paddingHorizontal: 28,
+    paddingVertical: 30,
+    gap: 16
+  },
+  loginPanelCompact: {
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+    gap: 12
+  },
+  loginPanelAndroid: {
+    marginTop: 48
   },
   loginLogo: {
-    width: 112,
-    height: 112,
+    width: 108,
+    height: 108,
     alignSelf: "center"
+  },
+  loginLogoCompact: {
+    width: 74,
+    height: 74
   },
   loginEyebrow: {
     color: "#60A5FA",
     fontSize: 11,
     letterSpacing: 2.4,
     textAlign: "center",
-    fontWeight: "700"
+    fontWeight: "700",
+    marginTop: 2
+  },
+  loginEyebrowCompact: {
+    fontSize: 10,
+    letterSpacing: 2.1
   },
   loginTitle: {
     color: "#FFFFFF",
-    fontSize: 21,
+    fontSize: 24,
     fontWeight: "700",
-    textAlign: "center"
+    textAlign: "center",
+    letterSpacing: -0.5,
+    marginTop: 2
+  },
+  loginTitleCompact: {
+    fontSize: 19,
+    marginTop: 0
   },
   loginCopy: {
     color: "#CBD5E1",
     fontSize: 15,
     lineHeight: 22,
-    textAlign: "center"
+    textAlign: "center",
+    maxWidth: 320,
+    alignSelf: "center"
   },
   loginCard: {
     borderRadius: 24,
     backgroundColor: "#F8FAFC",
-    padding: 16,
-    gap: 12
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 14,
+    marginTop: 2
+  },
+  loginCardCompact: {
+    padding: 14,
+    gap: 10
   },
   headerRow: {
     flexDirection: "row",
@@ -1258,7 +1781,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 14,
     right: 14,
-    gap: 8
+    gap: 8,
+    zIndex: 3
   },
   mapLegendPill: {
     flexDirection: "row",
@@ -1291,6 +1815,43 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#FFFFFF",
     transform: [{ rotate: "45deg" }]
+  },
+  mapTapLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+    justifyContent: "flex-end",
+    alignItems: "flex-start",
+    padding: 14
+  },
+  mapTapText: {
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.78)",
+    color: "#E2E8F0",
+    fontSize: 11,
+    fontWeight: "800",
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  fullMapScreen: {
+    flex: 1,
+    backgroundColor: "#081930"
+  },
+  fullMapClose: {
+    position: "absolute",
+    right: 16,
+    zIndex: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 18,
+    paddingVertical: 10
+  },
+  fullMapCloseText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800"
   },
   tabRow: {
     flexDirection: "row",
@@ -1371,6 +1932,59 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     color: "#0F172A",
     fontSize: 16
+  },
+  addressInputRow: {
+    minHeight: 58,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    paddingLeft: 14,
+    paddingRight: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12
+  },
+  addressIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  pickupAddressIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: "#F97316",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: "#F97316",
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2
+  },
+  destinationAddressIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: "#2563EB",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    transform: [{ rotate: "45deg" }],
+    shadowColor: "#2563EB",
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2
+  },
+  addressInput: {
+    flex: 1,
+    color: "#0F172A",
+    fontSize: 16,
+    paddingVertical: 14
   },
   passwordFieldRow: {
     borderRadius: 18,
@@ -1519,6 +2133,13 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     alignItems: "center"
   },
+  inlinePickerWrapSolo: {
+    minHeight: 56,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center"
+  },
   scheduleLabel: {
     color: "#64748B",
     fontSize: 12,
@@ -1611,6 +2232,108 @@ const styles = StyleSheet.create({
     color: "#64748B",
     fontSize: 13
   },
+  paymentBlock: {
+    marginTop: 10,
+    borderRadius: 18,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 14,
+    gap: 8
+  },
+  paymentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  paymentLabel: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    textTransform: "uppercase"
+  },
+  paymentStatus: {
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  paymentStatusPaid: {
+    color: "#16A34A"
+  },
+  paymentStatusDue: {
+    color: "#D97706"
+  },
+  paymentAmount: {
+    color: "#0F172A",
+    fontSize: 24,
+    fontWeight: "800"
+  },
+  paymentCopy: {
+    color: "#475569",
+    fontSize: 14,
+    lineHeight: 20
+  },
+  paymentActions: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 4
+  },
+  paymentPrimaryButton: {
+    borderRadius: 18,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 20,
+    paddingVertical: 12
+  },
+  paymentPrimaryText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  paymentSecondaryButton: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
+    backgroundColor: "#EEF2FF",
+    paddingHorizontal: 18,
+    paddingVertical: 12
+  },
+  paymentSecondaryText: {
+    color: "#4338CA",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  paymentGateScreen: {
+    flex: 1,
+    backgroundColor: "#081930"
+  },
+  paymentGateContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: 20,
+    gap: 12
+  },
+  paymentGateCard: {
+    borderRadius: 28,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 18,
+    gap: 10
+  },
+  paymentGateCancelButton: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    backgroundColor: "#FEF2F2",
+    paddingVertical: 14,
+    alignItems: "center"
+  },
+  paymentGateCancelText: {
+    color: "#B91C1C",
+    fontSize: 15,
+    fontWeight: "800"
+  },
   infoStrip: {
     marginTop: 8,
     borderRadius: 16,
@@ -1645,6 +2368,138 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     marginTop: 6
+  },
+  androidPickerOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(8, 25, 48, 0.62)",
+    padding: 14
+  },
+  androidPickerSheet: {
+    maxHeight: "74%",
+    borderRadius: 30,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 18,
+    shadowColor: "#020617",
+    shadowOpacity: 0.24,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -10 },
+    elevation: 16
+  },
+  androidPickerHandle: {
+    alignSelf: "center",
+    width: 46,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#CBD5E1",
+    marginBottom: 16
+  },
+  androidPickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14
+  },
+  androidPickerEyebrow: {
+    color: "#2563EB",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 4
+  },
+  androidPickerTitle: {
+    color: "#0F172A",
+    fontSize: 22,
+    fontWeight: "800"
+  },
+  androidPickerCloseButton: {
+    borderRadius: 999,
+    backgroundColor: "#E0E7FF",
+    paddingHorizontal: 14,
+    paddingVertical: 9
+  },
+  androidPickerCloseText: {
+    color: "#4338CA",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  androidWheelSummary: {
+    borderRadius: 18,
+    backgroundColor: "#EEF4FF",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+    alignItems: "center"
+  },
+  androidWheelSummaryText: {
+    color: "#1D4ED8",
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  androidWheelRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 10
+  },
+  androidWheelColumn: {
+    flex: 1,
+    minWidth: 0
+  },
+  androidWheelLabel: {
+    color: "#64748B",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    textAlign: "center",
+    marginBottom: 8
+  },
+  androidWheelScroll: {
+    height: 210,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0"
+  },
+  androidWheelContent: {
+    gap: 6,
+    paddingVertical: 8
+  },
+  androidWheelItem: {
+    minHeight: 42,
+    borderRadius: 14,
+    marginHorizontal: 7,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  androidWheelItemActive: {
+    backgroundColor: "#2563EB"
+  },
+  androidWheelItemText: {
+    color: "#475569",
+    fontSize: 16,
+    fontWeight: "700"
+  },
+  androidWheelItemTextActive: {
+    color: "#FFFFFF"
+  },
+  androidPickerDoneButton: {
+    borderRadius: 18,
+    backgroundColor: "#2563EB",
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 16
+  },
+  androidPickerDoneText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800"
   },
   statusText: {
     color: "#CBD5E1",

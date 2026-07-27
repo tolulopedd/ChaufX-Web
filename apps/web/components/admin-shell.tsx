@@ -11,6 +11,7 @@ import {
   DriversIcon,
   MessagesIcon,
   ReportsIcon,
+  SettlementsIcon,
   SettingsIcon,
   SignOutIcon,
   TripsIcon
@@ -25,7 +26,7 @@ const navItems = [
   { href: "/trips", label: "Active Trips", icon: TripsIcon },
   { href: "/messages", label: "Messages", icon: MessagesIcon },
   { href: "/reports", label: "Reports", icon: ReportsIcon },
-  { href: "/settlements", label: "Settlements", icon: ReportsIcon },
+  { href: "/settlements", label: "Settlements", icon: SettlementsIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon }
 ];
 
@@ -43,17 +44,10 @@ export function AdminShell({
   const token = getStoredToken();
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f7f7fb_0%,#ffffff_42%,#f3f4f6_100%)] text-[#0F172A]">
-      <div className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[260px_1fr]">
-        <aside className="rounded-[30px] border border-[#E5E7EB] bg-white/95 p-5 shadow-[0_24px_52px_-36px_rgba(15,23,42,0.3)] backdrop-blur">
-          <div className="rounded-[24px] bg-[linear-gradient(145deg,#0F172A,#1f2555_48%,#4338CA_100%)] p-5 text-white">
-            <AdminBrand theme="dark" />
-            <div className="mt-5 max-w-[12rem] rounded-full border border-white/12 bg-white/8 px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-white/70">
-              Admin workspace
-            </div>
-            <p className="mt-4 text-sm leading-6 text-white/80">Manage drivers, bookings, payments, and operations from one workspace.</p>
-          </div>
-
+    <div className="min-h-screen bg-[#F7F8FB] text-[#0F172A]">
+      <div className="mx-auto grid max-w-[1440px] gap-0 px-4 py-4 lg:grid-cols-[248px_1fr]">
+        <aside className="border-r border-[#E5E7EB] bg-white px-5 py-6">
+          <AdminBrand />
           <nav className="mt-6 space-y-2">
             {navItems.map((item) => {
               const active = pathname === item.href;
@@ -62,23 +56,20 @@ export function AdminShell({
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                    active ? "bg-[#EEF0FF] text-[#4338CA]" : "text-slate-600 hover:bg-[#F3F4F6] hover:text-[#0F172A]"
+                  className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition ${
+                    active ? "bg-[#EEF0FF] text-[#4338CA]" : "text-slate-600 hover:bg-[#F7F8FB] hover:text-[#0F172A]"
                   }`}
                 >
-                  <span className="flex items-center gap-3">
-                    <span
-                      className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl border transition ${
-                        active
-                          ? "border-[#DCDDFF] bg-white text-[#4338CA]"
-                          : "border-[#E5E7EB] bg-[#F8FAFC] text-slate-500"
-                      }`}
-                    >
-                      <Icon className="h-4.5 w-4.5" />
-                    </span>
-                    <span>{item.label}</span>
+                  <span
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl border transition ${
+                      active
+                        ? "border-[#DCDDFF] bg-white text-[#4338CA]"
+                        : "border-[#E5E7EB] bg-[#F8FAFC] text-slate-500"
+                    }`}
+                  >
+                    <Icon className="h-4.5 w-4.5" />
                   </span>
-                  {active ? <span className="h-2 w-2 rounded-full bg-[#4F46E5]" /> : null}
+                  <span>{item.label}</span>
                 </Link>
               );
             })}
@@ -99,16 +90,16 @@ export function AdminShell({
           {!token ? <p className="mt-3 text-xs text-amber-600">No token stored yet. Sign in to make live admin changes.</p> : null}
         </aside>
 
-        <main className="space-y-6">
-          <section className="rounded-[30px] border border-[#E5E7EB] bg-white/90 p-5 shadow-[0_20px_52px_-40px_rgba(15,23,42,0.22)] backdrop-blur">
+        <main className="space-y-6 bg-[#F7F8FB] px-6 py-6">
+          <section className="border-b border-[#E5E7EB] pb-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
-                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4F46E5]">Admin</div>
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4F46E5]">Admin workspace</div>
                 <h1 className="mt-2 text-[2rem] font-semibold tracking-[-0.05em] text-slate-950">{title}</h1>
                 <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
               </div>
-              <div className="rounded-2xl border border-[#DCDDFF] bg-[#EEF0FF] px-4 py-2.5 text-sm font-medium text-[#4338CA]">
-                ChaufX operations center
+              <div className="rounded-full border border-[#DCDDFF] bg-[#EEF0FF] px-3.5 py-2 text-sm font-medium text-[#4338CA]">
+                ChaufX
               </div>
             </div>
           </section>
@@ -132,15 +123,15 @@ export function Panel({
   subtitle?: string;
 }) {
   return (
-    <section className="rounded-[26px] border border-[#E5E7EB] bg-white p-5 shadow-[0_20px_52px_-42px_rgba(15,23,42,0.24)]">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <section className="rounded-[24px] border border-[#E5E7EB] bg-white">
+      <div className="flex flex-col gap-3 border-b border-[#F1F5F9] px-5 py-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-[1.15rem] font-semibold tracking-[-0.04em] text-slate-950">{title}</h2>
+          <h2 className="text-[1.05rem] font-semibold tracking-[-0.04em] text-slate-950">{title}</h2>
           {subtitle ? <p className="mt-1 text-sm leading-6 text-slate-500">{subtitle}</p> : null}
         </div>
         {aside}
       </div>
-      {children}
+      <div className="px-5 py-5">{children}</div>
     </section>
   );
 }

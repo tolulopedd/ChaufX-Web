@@ -60,7 +60,7 @@ type TripStartReminder = {
 type NotificationsModule = typeof import("expo-notifications");
 type NotificationSubscription = { remove(): void };
 
-const logo = require("./assets/dm-logo-light.png");
+const logo = require("./assets/chaufx-mark.png");
 const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
 const pushNotificationsEnabled = process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS === "true";
 let notificationsModulePromise: Promise<NotificationsModule | null> | null = null;
@@ -505,6 +505,7 @@ export default function App() {
   const shownTripReminderKeysRef = useRef<Set<string>>(new Set());
   const notificationResponseRef = useRef<NotificationSubscription | null>(null);
   const loginInFlightRef = useRef(false);
+  const isAndroidLoginMode = Platform.OS === "android";
 
   useEffect(() => {
     if (mapboxToken) {
@@ -1203,6 +1204,72 @@ export default function App() {
   }, [currentTrip, mapState]);
 
   if (!session) {
+    const loginPanel = (
+      <View
+        style={[
+          styles.loginPanel,
+          isAndroidLoginMode ? styles.loginPanelCompact : null,
+          isAndroidLoginMode ? styles.loginPanelAndroid : null
+        ]}
+      >
+        <Image
+          source={logo}
+          style={[styles.loginLogo, isAndroidLoginMode ? styles.loginLogoCompact : null]}
+          resizeMode="contain"
+        />
+        <Text style={[styles.loginEyebrow, isAndroidLoginMode ? styles.loginEyebrowCompact : null]}>
+          DRIVER ACCESS
+        </Text>
+        <Text style={[styles.loginTitle, isAndroidLoginMode ? styles.loginTitleCompact : null]}>Driver App</Text>
+        {!isAndroidLoginMode ? (
+          <Text style={styles.loginCopy}>
+            Go online, receive nearby requests, and unlock trip management tools.
+          </Text>
+        ) : null}
+
+        <View style={[styles.loginCard, isAndroidLoginMode ? styles.loginCardCompact : null]}>
+          <TextInput
+            placeholder="Enter your email"
+            placeholderTextColor="#94A3B8"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            style={styles.input}
+            value={loginEmail}
+            onChangeText={setLoginEmail}
+            showSoftInputOnFocus={isAndroidLoginMode}
+          />
+          <View style={styles.passwordFieldRow}>
+            <TextInput
+              placeholder="Enter your password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry={!showLoginPassword}
+              style={styles.passwordInput}
+              value={loginPassword}
+              onChangeText={setLoginPassword}
+              showSoftInputOnFocus={isAndroidLoginMode}
+            />
+            <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
+              <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
+            </Pressable>
+          </View>
+          <Pressable
+            onPress={() => {
+              setPasswordResetEmail(loginEmail.trim());
+              setPasswordResetVisible(true);
+            }}
+          >
+            <Text style={styles.linkText}>Forgot password?</Text>
+          </Pressable>
+          <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
+            {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
+          </Pressable>
+        </View>
+
+        {status ? <Text style={styles.statusText}>{status}</Text> : null}
+      </View>
+    );
+
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
@@ -1223,10 +1290,12 @@ export default function App() {
                 placeholder="Enter your email"
                 placeholderTextColor="#94A3B8"
                 autoCapitalize="none"
+                autoCorrect={false}
                 keyboardType="email-address"
                 style={styles.input}
                 value={passwordResetEmail}
                 onChangeText={setPasswordResetEmail}
+                showSoftInputOnFocus={isAndroidLoginMode}
               />
               <View style={styles.actionRow}>
                 <Pressable
@@ -1246,69 +1315,43 @@ export default function App() {
             </View>
           </View>
         </Modal>
-        <KeyboardAvoidingView
-          style={styles.keyboardWrap}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
-        >
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={[
-              styles.contentGrow,
-              styles.loginWrap,
-              { paddingTop: Math.max(insets.top, 18) + 20 }
+        {Platform.OS === "android" ? (
+          <View
+            style={[
+              styles.androidLoginShell,
+              {
+                paddingTop: Math.max(insets.top, 18) + 12,
+                paddingBottom: Math.max(insets.bottom, 20) + 20
+              }
             ]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
           >
-            <View style={styles.loginPanel}>
-              <Image source={logo} style={styles.loginLogo} resizeMode="contain" />
-              <Text style={styles.loginEyebrow}>DRIVER ACCESS</Text>
-              <Text style={styles.loginTitle}>Driver App</Text>
-              <Text style={styles.loginCopy}>
-                Go online, receive nearby requests, and unlock trip management tools.
-              </Text>
-
-              <View style={styles.loginCard}>
-                <TextInput
-                  placeholder="Enter your email"
-                  placeholderTextColor="#94A3B8"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  style={styles.input}
-                  value={loginEmail}
-                  onChangeText={setLoginEmail}
-                />
-                <View style={styles.passwordFieldRow}>
-                  <TextInput
-                    placeholder="Enter your password"
-                    placeholderTextColor="#94A3B8"
-                    secureTextEntry={!showLoginPassword}
-                    style={styles.passwordInput}
-                    value={loginPassword}
-                    onChangeText={setLoginPassword}
-                  />
-                  <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
-                    <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
-                  </Pressable>
-                </View>
-                <Pressable
-                  onPress={() => {
-                    setPasswordResetEmail(loginEmail.trim());
-                    setPasswordResetVisible(true);
-                  }}
-                >
-                  <Text style={styles.linkText}>Forgot password?</Text>
-                </Pressable>
-                <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
-                  {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
-                </Pressable>
-              </View>
-
-              {status ? <Text style={styles.statusText}>{status}</Text> : null}
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+            {loginPanel}
+          </View>
+        ) : (
+          <KeyboardAvoidingView
+            style={styles.keyboardWrap}
+            behavior="padding"
+            keyboardVerticalOffset={8}
+          >
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={[
+                styles.contentGrow,
+                styles.loginWrap,
+                {
+                  paddingTop: Math.max(insets.top, 18) + 20,
+                  paddingBottom: Math.max(insets.bottom, 24) + 140
+                }
+              ]}
+              keyboardShouldPersistTaps="always"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+              scrollEnabled
+            >
+              {loginPanel}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        )}
       </SafeAreaView>
     );
   }
@@ -1677,7 +1720,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingBottom: 24,
-    justifyContent: "center"
+    justifyContent: "flex-start"
+  },
+  androidLoginShell: {
+    flex: 1,
+    paddingHorizontal: 20,
+    justifyContent: "flex-start"
   },
   loginPanel: {
     borderRadius: 28,
@@ -1685,10 +1733,21 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 14
   },
+  loginPanelCompact: {
+    padding: 16,
+    gap: 8
+  },
+  loginPanelAndroid: {
+    marginTop: 48
+  },
   loginLogo: {
     width: 112,
     height: 112,
     alignSelf: "center"
+  },
+  loginLogoCompact: {
+    width: 74,
+    height: 74
   },
   loginEyebrow: {
     color: "#60A5FA",
@@ -1697,11 +1756,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700"
   },
+  loginEyebrowCompact: {
+    fontSize: 10,
+    letterSpacing: 2.1
+  },
   loginTitle: {
     color: "#FFFFFF",
     fontSize: 28,
     fontWeight: "700",
     textAlign: "center"
+  },
+  loginTitleCompact: {
+    fontSize: 18
   },
   loginCopy: {
     color: "#CBD5E1",
@@ -1714,6 +1780,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
     padding: 16,
     gap: 12
+  },
+  loginCardCompact: {
+    padding: 14,
+    gap: 8
   },
   headerRow: {
     flexDirection: "row",

@@ -75,6 +75,14 @@ function driverStatusLabel(value?: string | null) {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+function settlementStatusTone(value?: string | null) {
+  return value === "PAID" ? "emerald" : "amber";
+}
+
+function settlementStatusLabel(value?: string | null) {
+  return value === "PAID" ? "Paid out" : "Awaiting payout";
+}
+
 function driverVehicleLabel(value?: string | null) {
   if (!value) {
     return "Vehicle details not provided";
@@ -240,7 +248,8 @@ export default function DriverLoginPage() {
   const lastLocationUpdate = profile.locationUpdatedAt ? new Date(profile.locationUpdatedAt).toLocaleString() : "Awaiting first update";
   const currentWeekPayout = toCurrency(Number(profile.settlementSummary?.currentWeekDriverShareAmount ?? 0), "CAD");
   const lifetimePayout = toCurrency(Number(profile.settlementSummary?.lifetimeDriverShareAmount ?? 0), "CAD");
-  const lifetimeGross = toCurrency(Number(profile.settlementSummary?.lifetimeGrossAmount ?? 0), "CAD");
+  const outstandingPayout = toCurrency(Number(profile.settlementSummary?.outstandingDriverShareAmount ?? 0), "CAD");
+  const paidOutTotal = toCurrency(Number(profile.settlementSummary?.paidOutDriverShareAmount ?? 0), "CAD");
   const ratingText = profile.ratingSummary?.averageScore
     ? `${Number(profile.ratingSummary.averageScore).toFixed(1)} / 5`
     : "No ratings";
@@ -316,8 +325,13 @@ export default function DriverLoginPage() {
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <DriverStatCard title="Current rides" value={currentRides.length} detail="Accepted, enroute, and active rides assigned to you." />
-            <DriverStatCard title="Weekly payout" value={currentWeekPayout} detail="Projected driver share for completed paid trips this week." />
-            <DriverStatCard title="Lifetime payout" value={lifetimePayout} detail="Projected driver share across completed paid trips." />
+            <DriverStatCard title="This week" value={currentWeekPayout} detail="Driver share earned from completed paid rides this week." />
+            <DriverStatCard title="Awaiting payout" value={outstandingPayout} detail="Approved earnings still pending weekly settlement release." />
+            <DriverStatCard title="Paid out" value={paidOutTotal} detail="Driver share already released through completed settlements." tone="dark" />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <DriverStatCard title="Lifetime earnings" value={lifetimePayout} detail="Total driver share across completed paid rides." />
             <DriverStatCard title="Driver rating" value={ratingText} detail={`${profile.ratingSummary?.totalRatings ?? 0} completed customer rating${profile.ratingSummary?.totalRatings === 1 ? "" : "s"}.`} tone="dark" />
           </div>
 
@@ -380,23 +394,23 @@ export default function DriverLoginPage() {
             id="settlements"
             eyebrow="Settlements"
             title="Driver payout summary"
-            description={`Projected driver share is ${profile.settlementConfig?.driverSharePercent ?? 70}% after the platform retains ${profile.settlementConfig?.platformSharePercent ?? 30}%.`}
+            description={`Driver share is ${profile.settlementConfig?.driverSharePercent ?? 70}% after the platform retains ${profile.settlementConfig?.platformSharePercent ?? 30}% for operations.`}
           >
             <div className="grid gap-4 lg:grid-cols-3">
               <StatCard
                 title="Completed paid rides"
                 value={profile.settlementSummary?.completedPaidTripsCount ?? 0}
-                detail="Trips currently included in your payout calculations."
+                detail="Trips currently included in your earnings record."
               />
               <StatCard
-                title="Gross booked revenue"
-                value={lifetimeGross}
-                detail="Completed paid bookings recorded against your account."
+                title="This week"
+                value={currentWeekPayout}
+                detail="Current week driver share from completed paid rides."
               />
               <StatCard
-                title="Projected driver payout"
-                value={lifetimePayout}
-                detail="Estimated payout based on the current revenue-sharing formula."
+                title="Outstanding payout"
+                value={outstandingPayout}
+                detail="Weekly settlements awaiting release."
                 tone="dark"
               />
             </div>
@@ -416,9 +430,12 @@ export default function DriverLoginPage() {
                               label={`${row.tripCount} trip${row.tripCount === 1 ? "" : "s"}`}
                               tone="violet"
                             />
+                            <StatusPill label={settlementStatusLabel(row.status)} tone={settlementStatusTone(row.status)} />
                           </div>
-                          <div className="mt-3 text-sm text-slate-500">
-                            Weekly payout period based on completed paid rides.
+                          <div className="mt-3 space-y-1 text-sm text-slate-500">
+                            <div>Weekly payout period based on completed paid rides.</div>
+                            {row.paidAt ? <div>Paid on {formatDate(row.paidAt)}</div> : null}
+                            {row.payoutReference ? <div>Reference: {row.payoutReference}</div> : null}
                           </div>
                         </div>
 

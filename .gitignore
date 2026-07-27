@@ -23,3 +23,5 @@ apps/*/android/local.properties
 apps/*/ios/Pods/
 apps/*/ios/build/
 apps/*/ios/.xcode.env.local
+apps/*/credentials.json
+apps/*/credentials/

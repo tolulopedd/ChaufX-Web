@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
 import { EmptyState, StatCard, StatusPill, adminTableCellClass, adminTableHeadClass } from "../../components/admin-primitives";
-import { useAdminResource } from "../../lib/api";
+import { updateSettlementStatus, useAdminResource } from "../../lib/api";
 
 type SettlementTrip = {
   bookingId: string;
@@ -25,6 +26,10 @@ type SettlementRow = {
   platformSharePercent: number;
   platformShareAmount: number;
   driverShareAmount: number;
+  status: "PENDING" | "PAID";
+  paidAt: string | null;
+  payoutReference: string | null;
+  notes: string | null;
   latestCompletedAt: string | null;
   trips: SettlementTrip[];
 };
@@ -40,6 +45,10 @@ type SettlementPayload = {
     driverShareAmount: number;
     tripCount: number;
     weeklyRows: number;
+    pendingRows: number;
+    paidRows: number;
+    pendingDriverShareAmount: number;
+    paidDriverShareAmount: number;
   };
   settlements: SettlementRow[];
 };
@@ -54,7 +63,11 @@ const settlementsFallback: SettlementPayload = {
     platformShareAmount: 0,
     driverShareAmount: 0,
     tripCount: 0,
-    weeklyRows: 0
+    weeklyRows: 0,
+    pendingRows: 0,
+    paidRows: 0,
+    pendingDriverShareAmount: 0,
+    paidDriverShareAmount: 0
   },
   settlements: []
 };
@@ -88,7 +101,30 @@ function trimDriverName(fullName: string) {
 }
 
 export default function SettlementsPage() {
-  const { data, loading, error } = useAdminResource<SettlementPayload>("/admin/settlements", settlementsFallback);
+  const { data, loading, error, reload } = useAdminResource<SettlementPayload>("/admin/settlements", settlementsFallback);
+  const [savingId, setSavingId] = useState<string>("");
+
+  async function onMarkSettlement(settlement: SettlementRow, status: "PENDING" | "PAID") {
+    const payoutReference =
+      status === "PAID"
+        ? window.prompt("Enter payout reference (optional).", settlement.payoutReference ?? "") ?? undefined
+        : settlement.payoutReference ?? undefined;
+    const notes = window.prompt("Add a payout note (optional).", settlement.notes ?? "") ?? undefined;
+
+    try {
+      setSavingId(settlement.id);
+      await updateSettlementStatus(settlement.driverId, settlement.weekStart, {
+        status,
+        payoutReference,
+        notes
+      });
+      await reload();
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Unable to update payout status.");
+    } finally {
+      setSavingId("");
+    }
+  }
 
   return (
     <AdminShell
@@ -97,12 +133,12 @@ export default function SettlementsPage() {
     >
       <div className="grid gap-4 xl:grid-cols-4">
         <StatCard title="Weekly settlement rows" value={data.summary.weeklyRows} detail="Weekly driver payout groups." />
-        <StatCard title="Paid completed trips" value={data.summary.tripCount} detail="Completed paid trips included in settlement." />
-        <StatCard title="Gross revenue" value={formatCurrency(data.summary.grossAmount)} detail="Gross revenue included in settlement." />
+        <StatCard title="Awaiting payout" value={formatCurrency(data.summary.pendingDriverShareAmount)} detail={`${data.summary.pendingRows} weekly payout row${data.summary.pendingRows === 1 ? "" : "s"} pending release.`} />
+        <StatCard title="Paid out" value={formatCurrency(data.summary.paidDriverShareAmount)} detail={`${data.summary.paidRows} weekly payout row${data.summary.paidRows === 1 ? "" : "s"} completed.`} />
         <StatCard
           title="Driver payout / platform"
           value={`${data.settlementConfig.driverSharePercent}% / ${data.settlementConfig.platformSharePercent}%`}
-          detail={`${formatCurrency(data.summary.driverShareAmount)} driver payout and ${formatCurrency(data.summary.platformShareAmount)} platform share.`}
+          detail={`${formatCurrency(data.summary.driverShareAmount)} driver share across ${data.summary.tripCount} completed paid trips.`}
           tone="dark"
         />
       </div>
@@ -125,12 +161,18 @@ export default function SettlementsPage() {
                         {trimDriverName(settlement.driverName)}
                       </div>
                       <StatusPill label={`${settlement.tripCount} trip${settlement.tripCount === 1 ? "" : "s"}`} tone="violet" />
+                      <StatusPill label={settlement.status === "PAID" ? "Paid out" : "Awaiting payout"} tone={settlement.status === "PAID" ? "emerald" : "amber"} />
                     </div>
                     <div className="mt-1 text-sm text-slate-500">{settlement.driverEmail}</div>
                     <div className="mt-3 text-sm font-medium text-slate-700">{formatDateRange(settlement.weekStart, settlement.weekEnd)}</div>
+                    <div className="mt-2 space-y-1 text-xs text-slate-500">
+                      {settlement.paidAt ? <div>Paid on {new Date(settlement.paidAt).toLocaleString()}</div> : null}
+                      {settlement.payoutReference ? <div>Reference: {settlement.payoutReference}</div> : null}
+                      {settlement.notes ? <div>Notes: {settlement.notes}</div> : null}
+                    </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[29rem]">
+                  <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[35rem]">
                     <div className="rounded-2xl border border-white bg-white px-4 py-2.5">
                       <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Gross</div>
                       <div className="mt-2 text-base font-semibold text-slate-950">{formatCurrency(settlement.grossAmount)}</div>
@@ -146,6 +188,27 @@ export default function SettlementsPage() {
                       <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Driver payout</div>
                       <div className="mt-2 text-base font-semibold text-slate-950">{formatCurrency(settlement.driverShareAmount)}</div>
                       <div className="mt-1 text-xs text-slate-500">{data.settlementConfig.driverSharePercent}% payable</div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 sm:col-span-3 xl:col-span-3">
+                      {settlement.status === "PAID" ? (
+                        <button
+                          type="button"
+                          onClick={() => void onMarkSettlement(settlement, "PENDING")}
+                          disabled={savingId === settlement.id}
+                          className="rounded-full border border-[#D7DEEF] px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {savingId === settlement.id ? "Updating..." : "Reopen week"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void onMarkSettlement(settlement, "PAID")}
+                          disabled={savingId === settlement.id}
+                          className="rounded-full bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {savingId === settlement.id ? "Saving..." : "Mark paid"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
