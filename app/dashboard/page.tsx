@@ -56,10 +56,10 @@ export default function DashboardPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           {data.activeTrips.length ? (
             data.activeTrips.map((trip: any) => (
-              <div key={trip.id} className="rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
+              <div key={trip.id} className="rounded-[22px] border border-[#E5E7EB] bg-[#FBFCFE] p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Active route</div>
+                    <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Active route</div>
                     <div className="mt-2 text-lg font-semibold tracking-[-0.04em] text-slate-950">{trip.pickupLocation}</div>
                     <div className="text-sm text-slate-500">to {trip.destinationLocation}</div>
                   </div>

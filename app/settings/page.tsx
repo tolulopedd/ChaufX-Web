@@ -23,11 +23,20 @@ type SettlementConfig = {
   driverSharePercent: number;
 };
 
+type FallbackPricingRow = {
+  flatFee: number;
+  minHours: number;
+};
+
 const settingsFallback = {
   zones: [],
   pricing: [],
   provincePricing: [] as ProvincePricingRow[],
   cityPricing: [] as CityPricingRow[],
+  fallbackPricing: {
+    flatFee: 35,
+    minHours: 2
+  } as FallbackPricingRow,
   settlementConfig: {
     platformSharePercent: 30,
     driverSharePercent: 70
@@ -40,6 +49,7 @@ export default function SettingsPage() {
   const [cityPricing, setCityPricing] = useState<CityPricingRow[]>([]);
   const [selectedProvince, setSelectedProvince] = useState("");
   const [selectedCityKey, setSelectedCityKey] = useState("");
+  const [fallbackPricing, setFallbackPricing] = useState<FallbackPricingRow>({ flatFee: 35, minHours: 2 });
   const [platformSharePercent, setPlatformSharePercent] = useState(30);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -47,8 +57,9 @@ export default function SettingsPage() {
   useEffect(() => {
     setProvincePricing(data.provincePricing);
     setCityPricing(data.cityPricing);
+    setFallbackPricing(data.fallbackPricing ?? { flatFee: 35, minHours: 2 });
     setPlatformSharePercent(data.settlementConfig?.platformSharePercent ?? 30);
-  }, [data.cityPricing, data.provincePricing, data.settlementConfig?.platformSharePercent]);
+  }, [data.cityPricing, data.fallbackPricing, data.provincePricing, data.settlementConfig?.platformSharePercent]);
 
   const provinceOptions = useMemo(
     () => provincePricing.map((row) => row.province).sort((left, right) => left.localeCompare(right)),
@@ -106,6 +117,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           provincePricing,
           cityPricing: cityPricing.filter((row) => row.province && row.city),
+          fallbackPricing,
           settlementConfig: {
             platformSharePercent
           }
@@ -128,7 +140,7 @@ export default function SettingsPage() {
       <div className="grid gap-4 xl:grid-cols-4">
         <StatCard title="Provinces/Territories" value={provincePricing.length} detail="Configured province and territory pricing rows." />
         <StatCard title="City overrides" value={cityPricing.length} detail="Configured city-level pricing overrides." />
-        <StatCard title="Pricing model" value="Flat fee + minimum hours" detail="Hourly flat fees and minimum booking hours." />
+        <StatCard title="Fallback pricing" value={`$${fallbackPricing.flatFee}/hour`} detail={`Minimum ${fallbackPricing.minHours} hour${fallbackPricing.minHours === 1 ? "" : "s"} outside configured regions.`} />
         <StatCard
           title="Driver settlement split"
           value={`${100 - platformSharePercent}% / ${platformSharePercent}%`}
@@ -174,6 +186,68 @@ export default function SettingsPage() {
             <div className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-slate-950">{100 - platformSharePercent}% driver payout</div>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               ChaufX retains {platformSharePercent}% and drivers receive {100 - platformSharePercent}%.
+            </p>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Fallback pricing"
+        subtitle="Used when pickup pricing is outside Canada or does not match a configured province, territory, or city."
+        aside={
+          <button
+            type="button"
+            onClick={savePricing}
+            disabled={saving}
+            className={adminSecondaryButtonClass}
+          >
+            {saving ? "Saving..." : "Save fallback"}
+          </button>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
+            <div className="text-sm font-semibold text-slate-950">Outside-region rate</div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Apply this flat fee when the booking pickup is outside the configured Canadian coverage table.
+            </p>
+            <div className="mt-5 grid gap-3 lg:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Flat fee / hour (CAD)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className={adminInputClass}
+                  value={fallbackPricing.flatFee}
+                  onChange={(event) =>
+                    setFallbackPricing((current) => ({ ...current, flatFee: Number(event.target.value || 0) }))
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Minimum hours</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  className={adminInputClass}
+                  value={fallbackPricing.minHours}
+                  onChange={(event) =>
+                    setFallbackPricing((current) => ({ ...current, minHours: Number(event.target.value || 1) }))
+                  }
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-[#DCDDFF] bg-[#EEF0FF] p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Fallback preview</div>
+            <div className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-slate-950">
+              ${fallbackPricing.flatFee * fallbackPricing.minHours} minimum
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Trips start at {fallbackPricing.minHours} billable hour{fallbackPricing.minHours === 1 ? "" : "s"} when no local pricing rule applies.
             </p>
           </div>
         </div>

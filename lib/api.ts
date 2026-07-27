@@ -407,6 +407,37 @@ export async function adminFetch<T>(path: string, options?: RequestInit): Promis
   return payload as T;
 }
 
+export async function updateSettlementStatus(
+  driverId: string,
+  weekStart: string,
+  payload: {
+    status: "PENDING" | "PAID";
+    payoutReference?: string | null;
+    notes?: string | null;
+  }
+) {
+  return adminFetch<{
+    settlement: {
+      id: string;
+      driverId: string;
+      driverName: string;
+      status: "PENDING" | "PAID";
+      weekStart: string;
+      weekEnd: string;
+      tripCount: number;
+      grossAmount: number;
+      platformShareAmount: number;
+      driverShareAmount: number;
+      paidAt: string | null;
+      payoutReference: string | null;
+      notes: string | null;
+    };
+  }>(`/admin/settlements/${driverId}/${weekStart}/status`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function fetchAdminDocumentLink(documentId: string) {
   const token = getStoredToken();
   const response = await fetch(`${API_BASE}/admin/documents/${documentId}/link`, {

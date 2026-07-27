@@ -184,7 +184,7 @@ function LoginPageContent() {
         <section className="rounded-[36px] border border-[#E5E7EB] bg-white p-8 shadow-[0_30px_90px_-55px_rgba(15,23,42,0.24)] md:p-10">
           <AdminBrand href="/" compact variant="login" />
           <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">{cardHeading.eyebrow}</div>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-[#0F172A]">{cardHeading.title}</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">{cardHeading.title}</h1>
 
           {mode === "signup" ? (
             <div className="mt-6 inline-flex rounded-full border border-[#E5E7EB] bg-[#F8FAFC] p-1">
