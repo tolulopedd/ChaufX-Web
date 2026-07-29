@@ -1068,7 +1068,7 @@ export default function App() {
             style={styles.input}
             value={loginEmail}
             onChangeText={setLoginEmail}
-            showSoftInputOnFocus={isAndroidLoginMode}
+            showSoftInputOnFocus
           />
           <View style={styles.passwordFieldRow}>
             <TextInput
@@ -1078,7 +1078,7 @@ export default function App() {
               style={styles.passwordInput}
               value={loginPassword}
               onChangeText={setLoginPassword}
-              showSoftInputOnFocus={isAndroidLoginMode}
+              showSoftInputOnFocus
             />
             <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
               <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
