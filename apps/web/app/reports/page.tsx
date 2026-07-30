@@ -229,10 +229,9 @@ export default function ReportsPage() {
   }
 
   return (
-    <AdminShell title="Reports" description="Onboarding, trip, payment, and rating reports.">
+    <AdminShell title="Reports">
       <Panel
         title="Report filters"
-        subtitle="Refine the report view and export the current results as a PDF."
         aside={
           <button
             type="button"
@@ -249,7 +248,7 @@ export default function ReportsPage() {
             <div className="mt-1 text-base font-semibold tracking-[-0.03em] text-slate-950">{selectedReportLabel}</div>
           </div>
           <div className="text-sm text-slate-500">
-            {filteredRows.length} record{filteredRows.length === 1 ? "" : "s"} ready for review or export.
+            {filteredRows.length} record{filteredRows.length === 1 ? "" : "s"}
           </div>
         </div>
 
@@ -309,10 +308,7 @@ export default function ReportsPage() {
         </div>
       </Panel>
 
-      <Panel
-        title={selectedReportLabel}
-        subtitle={`${filteredRows.length} record${filteredRows.length === 1 ? "" : "s"} in the current view.`}
-      >
+      <Panel title={selectedReportLabel}>
         {loading ? <p className="text-sm text-slate-500">Loading reports...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         {filteredRows.length ? (
@@ -345,11 +341,11 @@ export default function ReportsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No records found" description="No records match the selected report filters." />
+          <EmptyState title="No records found" />
         )}
       </Panel>
 
-      <Panel title="Customer ratings" subtitle="Recent customer feedback for completed trips.">
+      <Panel title="Customer ratings">
         {data.ratings.length ? (
           <div className="grid gap-3 lg:grid-cols-2">
             {data.ratings.slice(0, 6).map((rating: any) => (
@@ -366,7 +362,7 @@ export default function ReportsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No rating records yet" description="Customer ratings are not available at this time." />
+          <EmptyState title="No rating records yet" />
         )}
       </Panel>
     </AdminShell>

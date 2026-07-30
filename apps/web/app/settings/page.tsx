@@ -43,6 +43,36 @@ const settingsFallback = {
   } as SettlementConfig
 };
 
+const defaultFallbackPricing = { flatFee: 35, minHours: 2 };
+
+function normalizeProvincePricing(rows: ProvincePricingRow[]) {
+  return rows
+    .map((row) => ({
+      province: row.province,
+      flatFee: Number(row.flatFee),
+      minHours: Number(row.minHours)
+    }))
+    .sort((left, right) => left.province.localeCompare(right.province));
+}
+
+function normalizeCityPricing(rows: CityPricingRow[]) {
+  return rows
+    .map((row) => ({
+      province: row.province,
+      city: row.city,
+      flatFee: Number(row.flatFee),
+      minHours: Number(row.minHours)
+    }))
+    .sort((left, right) => `${left.province}__${left.city}`.localeCompare(`${right.province}__${right.city}`));
+}
+
+function normalizeFallbackPricing(row: FallbackPricingRow) {
+  return {
+    flatFee: Number(row.flatFee),
+    minHours: Number(row.minHours)
+  };
+}
+
 export default function SettingsPage() {
   const { data, loading, error, reload } = useAdminResource<any>("/admin/settings", settingsFallback);
   const [provincePricing, setProvincePricing] = useState<ProvincePricingRow[]>([]);
@@ -107,24 +137,62 @@ export default function SettingsPage() {
     [cityOptionItems, selectedCityKey]
   );
 
-  async function savePricing() {
+  const provincePricingDirty = useMemo(
+    () =>
+      JSON.stringify(normalizeProvincePricing(provincePricing)) !==
+      JSON.stringify(normalizeProvincePricing(data.provincePricing ?? [])),
+    [data.provincePricing, provincePricing]
+  );
+  const cityPricingDirty = useMemo(
+    () =>
+      JSON.stringify(normalizeCityPricing(cityPricing)) !==
+      JSON.stringify(normalizeCityPricing(data.cityPricing ?? [])),
+    [cityPricing, data.cityPricing]
+  );
+  const fallbackPricingDirty = useMemo(
+    () =>
+      JSON.stringify(normalizeFallbackPricing(fallbackPricing)) !==
+      JSON.stringify(normalizeFallbackPricing(data.fallbackPricing ?? defaultFallbackPricing)),
+    [data.fallbackPricing, fallbackPricing]
+  );
+  const settlementPricingDirty = platformSharePercent !== (data.settlementConfig?.platformSharePercent ?? 30);
+  const pricingDirty = provincePricingDirty || cityPricingDirty || fallbackPricingDirty || settlementPricingDirty;
+
+  async function savePricing(scope: "all" | "fallback" | "settlement" = "all") {
     setSaving(true);
     setNotice("");
 
     try {
+      const body =
+        scope === "fallback"
+          ? { fallbackPricing }
+          : scope === "settlement"
+            ? {
+                settlementConfig: {
+                  platformSharePercent
+                }
+              }
+            : {
+                provincePricing,
+                cityPricing: cityPricing.filter((row) => row.province && row.city),
+                fallbackPricing,
+                settlementConfig: {
+                  platformSharePercent
+                }
+              };
+
       await adminFetch("/admin/settings/pricing", {
         method: "POST",
-        body: JSON.stringify({
-          provincePricing,
-          cityPricing: cityPricing.filter((row) => row.province && row.city),
-          fallbackPricing,
-          settlementConfig: {
-            platformSharePercent
-          }
-        })
+        body: JSON.stringify(body)
       });
       await reload();
-      setNotice("Pricing settings saved.");
+      setNotice(
+        scope === "fallback"
+          ? "Fallback pricing saved."
+          : scope === "settlement"
+            ? "Settlement split saved."
+            : "Pricing settings saved."
+      );
     } catch (reason) {
       setNotice(reason instanceof Error ? reason.message : "Unable to save pricing settings.");
     } finally {
@@ -133,10 +201,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AdminShell
-      title="Settings"
-      description="Pricing, settlement split, and platform settings."
-    >
+    <AdminShell title="Settings">
       <div className="grid gap-4 xl:grid-cols-4">
         <StatCard title="Provinces/Territories" value={provincePricing.length} detail="Configured province and territory pricing rows." />
         <StatCard title="City overrides" value={cityPricing.length} detail="Configured city-level pricing overrides." />
@@ -149,24 +214,32 @@ export default function SettingsPage() {
         />
       </div>
 
+      {notice ? (
+        <div className={`rounded-[18px] border px-4 py-3 text-sm font-medium ${
+          notice.includes("saved")
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-amber-100 bg-amber-50 text-amber-700"
+        }`}>
+          {notice}
+        </div>
+      ) : null}
+
       <Panel
         title="Driver settlement formula"
-        subtitle="Set the weekly payout split for paid completed trips."
         aside={
           <button
             type="button"
-            onClick={savePricing}
+            onClick={() => savePricing("settlement")}
             disabled={saving}
-            className={adminSecondaryButtonClass}
+            className={settlementPricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
           >
-            {saving ? "Saving..." : "Save split"}
+            {saving ? "Saving..." : "Save"}
           </button>
         }
       >
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
+          <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
             <div className="text-sm font-semibold text-slate-950">Revenue share</div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">Choose the platform share percentage for paid trips.</p>
             <label className="mt-5 block">
               <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Platform share (%)</span>
               <input
@@ -181,36 +254,29 @@ export default function SettingsPage() {
             </label>
           </div>
 
-          <div className="rounded-[24px] border border-[#DCDDFF] bg-[#EEF0FF] p-5">
+          <div className="rounded-[18px] border border-[#DCDDFF] bg-[#EEF0FF] p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Settlement preview</div>
             <div className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-slate-950">{100 - platformSharePercent}% driver payout</div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              ChaufX retains {platformSharePercent}% and drivers receive {100 - platformSharePercent}%.
-            </p>
           </div>
         </div>
       </Panel>
 
       <Panel
         title="Fallback pricing"
-        subtitle="Used when pickup pricing is outside Canada or does not match a configured province, territory, or city."
         aside={
           <button
             type="button"
-            onClick={savePricing}
+            onClick={() => savePricing("fallback")}
             disabled={saving}
-            className={adminSecondaryButtonClass}
+            className={fallbackPricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
           >
-            {saving ? "Saving..." : "Save fallback"}
+            {saving ? "Saving..." : "Save"}
           </button>
         }
       >
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
+          <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
             <div className="text-sm font-semibold text-slate-950">Outside-region rate</div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Apply this flat fee when the booking pickup is outside the configured Canadian coverage table.
-            </p>
             <div className="mt-5 grid gap-3 lg:grid-cols-2">
               <label className="block">
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Flat fee / hour (CAD)</span>
@@ -241,74 +307,53 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-[#DCDDFF] bg-[#EEF0FF] p-5">
+          <div className="rounded-[18px] border border-[#DCDDFF] bg-[#EEF0FF] p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Fallback preview</div>
             <div className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-slate-950">
               ${fallbackPricing.flatFee * fallbackPricing.minHours} minimum
             </div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Trips start at {fallbackPricing.minHours} billable hour{fallbackPricing.minHours === 1 ? "" : "s"} when no local pricing rule applies.
-            </p>
           </div>
         </div>
       </Panel>
 
       <Panel
         title="Provinces/Territories"
-        subtitle="Set default flat fees and minimum booking hours by province or territory."
         aside={
           <button
             type="button"
-            onClick={savePricing}
+            onClick={() => savePricing("all")}
             disabled={saving}
-            className={adminPrimaryButtonClass}
+            className={pricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
           >
-            {saving ? "Saving..." : "Save pricing"}
+            {saving ? "Saving..." : "Save"}
           </button>
         }
       >
         {loading ? <p className="text-sm text-slate-500">Loading settings...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
-        {notice ? <p className={`text-sm ${notice.includes("saved") ? "text-emerald-600" : "text-amber-600"}`}>{notice}</p> : null}
-
         {provincePricing.length ? (
-          <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-3">
-              <div className="px-2 pb-3 pt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Province/Territory list
-              </div>
-              <div className="space-y-2">
-                {provinceOptions.map((province) => {
-                  const row = provincePricing.find((item) => item.province === province);
-                  const isActive = province === selectedProvince;
+          <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Province/Territory</span>
+                <select
+                  className={adminInputClass}
+                  value={selectedProvince}
+                  onChange={(event) => setSelectedProvince(event.target.value)}
+                >
+                  {provinceOptions.map((province) => (
+                    <option key={province} value={province}>
+                      {province}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-                  return (
-                    <button
-                      key={province}
-                      type="button"
-                      onClick={() => setSelectedProvince(province)}
-                      className={`w-full rounded-[20px] border px-4 py-3 text-left transition ${
-                        isActive
-                          ? "border-[#C7D2FE] bg-white shadow-[0_16px_30px_-24px_rgba(37,99,235,0.45)]"
-                          : "border-transparent bg-white/70 hover:border-[#E5E7EB] hover:bg-white"
-                      }`}
-                    >
-                      <div className="text-sm font-semibold text-slate-950">{province}</div>
-                      <div className="mt-1 text-sm text-slate-500">
-                        ${row?.flatFee ?? 0}/hour · minimum {row?.minHours ?? 0} hour{row?.minHours === 1 ? "" : "s"}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {selectedProvinceRow ? (
-              <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
+              {selectedProvinceRow ? (
+                <div>
                 <div>
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Selected province/territory</div>
                   <div className="mt-2 text-xl font-semibold tracking-[-0.04em] text-slate-950">{selectedProvinceRow.province}</div>
-                  <div className="mt-2 text-sm text-slate-500">Edit the default pricing used when no city override applies.</div>
                 </div>
 
                 <div className="mt-5 grid gap-3 lg:grid-cols-2">
@@ -351,17 +396,17 @@ export default function SettingsPage() {
                     />
                   </label>
                 </div>
-              </div>
-            ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : (
-          <EmptyState title="No province pricing yet" description="Province and territory pricing has not been configured." />
+          <EmptyState title="No province pricing yet" />
         )}
       </Panel>
 
       <Panel
         title="City pricing overrides"
-        subtitle="Set city-level pricing where local rates differ from provincial defaults."
         aside={
           <button
             type="button"
@@ -380,7 +425,7 @@ export default function SettingsPage() {
       >
         {cityPricing.length ? (
           <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-3">
+            <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3">
               <div className="px-2 pb-3 pt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 City override list
               </div>
@@ -412,14 +457,13 @@ export default function SettingsPage() {
             </div>
 
             {selectedCityItem ? (
-              <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
+              <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Selected city override</div>
                     <div className="mt-2 text-xl font-semibold tracking-[-0.04em] text-slate-950">
                       {selectedCityItem.row.city?.trim().length ? selectedCityItem.row.city : "Unnamed city"}
                     </div>
-                    <div className="mt-2 text-sm text-slate-500">Edit local pricing where the city differs from the province default.</div>
                   </div>
                   <button
                     type="button"
@@ -507,7 +551,7 @@ export default function SettingsPage() {
             ) : null}
           </div>
         ) : (
-          <EmptyState title="No city overrides yet" description="No city-level pricing overrides have been added." />
+          <EmptyState title="No city overrides yet" />
         )}
       </Panel>
     </AdminShell>

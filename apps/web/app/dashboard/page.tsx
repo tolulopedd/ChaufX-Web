@@ -31,10 +31,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <AdminShell
-      title="Dashboard"
-      description="Overview of users, drivers, bookings, and revenue."
-    >
+    <AdminShell title="Dashboard">
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="grid gap-4 md:grid-cols-2">
           {metrics.map((metric) => (
@@ -50,13 +47,13 @@ export default function DashboardPage() {
         />
       </div>
 
-      <Panel title="Active trips" subtitle="Current active trip activity.">
+      <Panel title="Active trips">
         {loading ? <p className="text-sm text-slate-500">Loading dashboard...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         <div className="grid gap-4 lg:grid-cols-2">
           {data.activeTrips.length ? (
             data.activeTrips.map((trip: any) => (
-              <div key={trip.id} className="rounded-[22px] border border-[#E5E7EB] bg-[#FBFCFE] p-5">
+              <div key={trip.id} className="rounded-[18px] border border-[#E5E7EB] bg-[#FBFCFE] p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Active route</div>
@@ -78,7 +75,7 @@ export default function DashboardPage() {
               </div>
             ))
           ) : (
-            <EmptyState title="No active trips" description="There are no active trips at this time." />
+            <EmptyState title="No active trips" />
           )}
         </div>
       </Panel>

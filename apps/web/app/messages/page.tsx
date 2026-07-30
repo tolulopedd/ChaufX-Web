@@ -12,18 +12,15 @@ export default function MessagesPage() {
   const { data, loading, error, reload } = useAdminResource("/admin/contact-messages", contactMessagesFallback);
 
   return (
-    <AdminShell
-      title="Messages"
-      description="Website inquiries and contact requests."
-    >
-      <Panel title="Incoming messages" subtitle="Review incoming inquiries and resolution status.">
+    <AdminShell title="Messages">
+      <Panel title="Incoming messages">
         {loading ? <p className="text-sm text-slate-500">Loading messages...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
 
         <div className="grid gap-3">
           {data.length ? (
             data.map((message) => (
-              <div key={message.id} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+              <div key={message.id} className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3.5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="max-w-3xl">
                     <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">
@@ -67,7 +64,7 @@ export default function MessagesPage() {
               </div>
             ))
           ) : (
-            <EmptyState title="No messages" description="There are no contact messages at this time." />
+            <EmptyState title="No messages" />
           )}
         </div>
       </Panel>

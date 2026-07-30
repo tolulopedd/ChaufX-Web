@@ -127,10 +127,7 @@ export default function SettlementsPage() {
   }
 
   return (
-    <AdminShell
-      title="Driver Settlements"
-      description="Weekly driver payouts and platform share."
-    >
+    <AdminShell title="Driver Settlements">
       <div className="grid gap-4 xl:grid-cols-4">
         <StatCard title="Weekly settlement rows" value={data.summary.weeklyRows} detail="Weekly driver payout groups." />
         <StatCard title="Awaiting payout" value={formatCurrency(data.summary.pendingDriverShareAmount)} detail={`${data.summary.pendingRows} weekly payout row${data.summary.pendingRows === 1 ? "" : "s"} pending release.`} />
@@ -143,17 +140,14 @@ export default function SettlementsPage() {
         />
       </div>
 
-      <Panel
-        title="Weekly settlement queue"
-        subtitle="Weekly payout totals grouped by driver."
-      >
+      <Panel title="Weekly settlement queue">
         {loading ? <p className="text-sm text-slate-500">Loading settlement totals...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
 
         {data.settlements.length ? (
           <div className="space-y-4">
             {data.settlements.map((settlement) => (
-              <div key={settlement.id} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+              <div key={settlement.id} className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3.5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -247,10 +241,7 @@ export default function SettlementsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState
-            title="No weekly settlements yet"
-            description="No settlement rows are available at this time."
-          />
+          <EmptyState title="No weekly settlements yet" />
         )}
       </Panel>
     </AdminShell>

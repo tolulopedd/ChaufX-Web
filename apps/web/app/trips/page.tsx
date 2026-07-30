@@ -18,7 +18,7 @@ function TripMap({ trip }: { trip: any }) {
   const destinationY = 150;
 
   return (
-    <div className="rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+    <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3.5">
       <svg viewBox="0 0 320 200" className="h-48 w-full rounded-3xl bg-[linear-gradient(145deg,#EEF0FF,#ffffff)]">
         <defs>
           <linearGradient id={`route-${trip.id}`} x1="0%" x2="100%">
@@ -109,7 +109,6 @@ export default function TripsPage() {
   return (
     <AdminShell
       title="Active trips"
-      description="Trips in motion with route and assignment details."
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <StatCard title="Active trips" value={data.activeTrips.length} detail="Trips in progress." />
@@ -117,7 +116,7 @@ export default function TripsPage() {
         <StatCard title="Monitoring mode" value="Overview" detail="Current trip activity and route details." tone="dark" />
       </div>
 
-      <Panel title="Active trips list" subtitle="Review active trips by driver, customer, route, or date.">
+      <Panel title="Active trips list">
         {loading ? <p className="text-sm text-slate-500">Loading active trips...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
 
@@ -177,13 +176,13 @@ export default function TripsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No active trips" description="No active trips match the selected filters." />
+          <EmptyState title="No active trips" />
         )}
       </Panel>
 
       {selectedTrip ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#0F172A]/70 px-5 py-8">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[32px] bg-white p-5 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#0F172A]/70 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[24px] bg-white p-4 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-3">
