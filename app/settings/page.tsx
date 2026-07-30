@@ -74,21 +74,34 @@ function normalizeFallbackPricing(row: FallbackPricingRow) {
 }
 
 export default function SettingsPage() {
-  const { data, loading, error, reload } = useAdminResource<any>("/admin/settings", settingsFallback);
+  const { data, loading, error } = useAdminResource<any>("/admin/settings", settingsFallback);
   const [provincePricing, setProvincePricing] = useState<ProvincePricingRow[]>([]);
   const [cityPricing, setCityPricing] = useState<CityPricingRow[]>([]);
+  const [savedProvincePricing, setSavedProvincePricing] = useState<ProvincePricingRow[]>([]);
+  const [savedCityPricing, setSavedCityPricing] = useState<CityPricingRow[]>([]);
   const [selectedProvince, setSelectedProvince] = useState("");
   const [selectedCityKey, setSelectedCityKey] = useState("");
   const [fallbackPricing, setFallbackPricing] = useState<FallbackPricingRow>({ flatFee: 35, minHours: 2 });
+  const [savedFallbackPricing, setSavedFallbackPricing] = useState<FallbackPricingRow>({ flatFee: 35, minHours: 2 });
   const [platformSharePercent, setPlatformSharePercent] = useState(30);
+  const [savedPlatformSharePercent, setSavedPlatformSharePercent] = useState(30);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    setProvincePricing(data.provincePricing);
-    setCityPricing(data.cityPricing);
-    setFallbackPricing(data.fallbackPricing ?? { flatFee: 35, minHours: 2 });
-    setPlatformSharePercent(data.settlementConfig?.platformSharePercent ?? 30);
+    const nextProvincePricing = data.provincePricing ?? [];
+    const nextCityPricing = data.cityPricing ?? [];
+    const nextFallbackPricing = data.fallbackPricing ?? { flatFee: 35, minHours: 2 };
+    const nextPlatformSharePercent = data.settlementConfig?.platformSharePercent ?? 30;
+
+    setProvincePricing(nextProvincePricing);
+    setSavedProvincePricing(nextProvincePricing);
+    setCityPricing(nextCityPricing);
+    setSavedCityPricing(nextCityPricing);
+    setFallbackPricing(nextFallbackPricing);
+    setSavedFallbackPricing(nextFallbackPricing);
+    setPlatformSharePercent(nextPlatformSharePercent);
+    setSavedPlatformSharePercent(nextPlatformSharePercent);
   }, [data.cityPricing, data.fallbackPricing, data.provincePricing, data.settlementConfig?.platformSharePercent]);
 
   const provinceOptions = useMemo(
@@ -140,43 +153,70 @@ export default function SettingsPage() {
   const provincePricingDirty = useMemo(
     () =>
       JSON.stringify(normalizeProvincePricing(provincePricing)) !==
-      JSON.stringify(normalizeProvincePricing(data.provincePricing ?? [])),
-    [data.provincePricing, provincePricing]
+      JSON.stringify(normalizeProvincePricing(savedProvincePricing)),
+    [provincePricing, savedProvincePricing]
   );
   const cityPricingDirty = useMemo(
     () =>
       JSON.stringify(normalizeCityPricing(cityPricing)) !==
-      JSON.stringify(normalizeCityPricing(data.cityPricing ?? [])),
-    [cityPricing, data.cityPricing]
+      JSON.stringify(normalizeCityPricing(savedCityPricing)),
+    [cityPricing, savedCityPricing]
   );
   const fallbackPricingDirty = useMemo(
     () =>
       JSON.stringify(normalizeFallbackPricing(fallbackPricing)) !==
-      JSON.stringify(normalizeFallbackPricing(data.fallbackPricing ?? defaultFallbackPricing)),
-    [data.fallbackPricing, fallbackPricing]
+      JSON.stringify(normalizeFallbackPricing(savedFallbackPricing ?? defaultFallbackPricing)),
+    [fallbackPricing, savedFallbackPricing]
   );
-  const settlementPricingDirty = platformSharePercent !== (data.settlementConfig?.platformSharePercent ?? 30);
-  const pricingDirty = provincePricingDirty || cityPricingDirty || fallbackPricingDirty || settlementPricingDirty;
+  const settlementPricingDirty = platformSharePercent !== savedPlatformSharePercent;
+
+  function applySavedSettings(payload: Partial<typeof settingsFallback>) {
+    if (payload.provincePricing) {
+      setProvincePricing(payload.provincePricing);
+      setSavedProvincePricing(payload.provincePricing);
+    }
+
+    if (payload.cityPricing) {
+      setCityPricing(payload.cityPricing);
+      setSavedCityPricing(payload.cityPricing);
+    }
+
+    if (payload.fallbackPricing) {
+      setFallbackPricing(payload.fallbackPricing);
+      setSavedFallbackPricing(payload.fallbackPricing);
+    }
+
+    if (payload.settlementConfig) {
+      setPlatformSharePercent(payload.settlementConfig.platformSharePercent);
+      setSavedPlatformSharePercent(payload.settlementConfig.platformSharePercent);
+    }
+  }
 
   async function savePricing(scope: "all" | "fallback" | "settlement" = "all") {
     setSaving(true);
     setNotice("");
 
     try {
-      const body = {
-        provincePricing,
-        cityPricing: cityPricing.filter((row) => row.province && row.city),
-        fallbackPricing,
-        settlementConfig: {
-          platformSharePercent
-        }
-      };
+      const cityPricingPayload = cityPricing.filter((row) => row.province && row.city);
+      const body =
+        scope === "fallback"
+          ? { fallbackPricing }
+          : scope === "settlement"
+            ? {
+                settlementConfig: {
+                  platformSharePercent
+                }
+              }
+            : {
+                provincePricing,
+                cityPricing: cityPricingPayload
+              };
 
-      await adminFetch("/admin/settings/pricing", {
+      const savedSettings = await adminFetch<Partial<typeof settingsFallback>>("/admin/settings/pricing", {
         method: "POST",
         body: JSON.stringify(body)
       });
-      await reload();
+      applySavedSettings(savedSettings);
       setNotice(
         scope === "fallback"
           ? "Fallback pricing saved."
@@ -314,7 +354,7 @@ export default function SettingsPage() {
             type="button"
             onClick={() => savePricing("all")}
             disabled={saving}
-            className={pricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
+            className={provincePricingDirty || cityPricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
           >
             {saving ? "Saving..." : "Save"}
           </button>
