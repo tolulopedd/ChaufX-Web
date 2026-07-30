@@ -10,20 +10,20 @@ export default function DriversPage() {
   const assignedCount = data.reduce((sum, driver) => sum + driver.bookings.length, 0);
 
   return (
-    <AdminShell title="Drivers" description="Driver roster, availability, and active assignments.">
+    <AdminShell title="Drivers">
       <div className="grid gap-4 lg:grid-cols-3">
         <StatCard title="Approved drivers" value={data.length} detail="Active driver accounts." />
         <StatCard title="Available now" value={availableCount} detail="Drivers online for requests." />
         <StatCard title="Open assignments" value={assignedCount} detail="Current assigned bookings." />
       </div>
 
-      <Panel title="Driver roster" subtitle="Approved drivers, availability, and assignment activity.">
+      <Panel title="Driver roster">
         {loading ? <p className="text-sm text-slate-500">Loading drivers...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         {data.length ? (
           <div className="space-y-3">
             {data.map((driver) => (
-              <div key={driver.id} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+              <div key={driver.id} className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3.5">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="text-[1.02rem] font-semibold tracking-[-0.04em] text-slate-950">{driver.user.fullName}</div>
@@ -51,7 +51,7 @@ export default function DriversPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No approved drivers" description="There are no approved drivers to display." />
+          <EmptyState title="No approved drivers" />
         )}
       </Panel>
     </AdminShell>

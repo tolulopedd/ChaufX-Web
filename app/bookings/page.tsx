@@ -195,7 +195,6 @@ export default function BookingsPage() {
   return (
     <AdminShell
       title="Bookings"
-      description="Bookings, assignment status, and trip progress."
     >
       <div className="grid gap-4 lg:grid-cols-4">
         <StatCard title="Total bookings" value={bookings.length} detail="All booking records." />
@@ -204,7 +203,7 @@ export default function BookingsPage() {
         <StatCard title="Active lifecycle" value={activeCount} detail="Accepted, enroute, or active trips." tone="dark" />
       </div>
 
-      <Panel title="Bookings list" subtitle="Review booking records by customer, driver, date, or status.">
+      <Panel title="Bookings list">
         {loading ? <p className="text-sm text-slate-500">Loading bookings...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
 
@@ -278,13 +277,13 @@ export default function BookingsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No bookings found" description="No booking records match the selected filters." />
+          <EmptyState title="No bookings found" />
         )}
       </Panel>
 
       {selectedBooking ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#0F172A]/70 px-5 py-8">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[32px] bg-white p-5 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#0F172A]/70 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[24px] bg-white p-4 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -376,7 +375,6 @@ export default function BookingsPage() {
               {!selectedBooking.assignedDriverId ? (
                 <div className="rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4">
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Admin override</div>
-                  <div className="mt-2 text-sm leading-6 text-slate-600">Assign a driver manually when needed.</div>
                   <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
                     <select
                       value={selectedDriver[selectedBooking.id] ?? ""}

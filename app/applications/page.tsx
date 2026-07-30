@@ -160,7 +160,6 @@ export default function ApplicationsPage() {
   return (
     <AdminShell
       title="Driver applications"
-      description="Review applications, documents, and approval decisions."
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <StatCard title="Applications" value={data.length} detail="Total applications." />
@@ -168,7 +167,7 @@ export default function ApplicationsPage() {
         <StatCard title="Under review" value={underReviewCount} detail="In progress." />
       </div>
 
-      <Panel title="Driver applications" subtitle="Review submitted details, supporting documents, and decisions.">
+      <Panel title="Driver applications">
         {loading ? <p className="text-sm text-slate-500">Loading applications...</p> : null}
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         {notice ? <p className="text-sm text-emerald-600">{notice}</p> : null}
@@ -209,13 +208,13 @@ export default function ApplicationsPage() {
             </div>
           </div>
         ) : (
-          <EmptyState title="No applications" description="There are no driver applications to review." />
+          <EmptyState title="No applications" />
         )}
       </Panel>
 
       {selectedApplication ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#0F172A]/70 px-5 py-8">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[32px] bg-white p-5 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#0F172A]/70 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[24px] bg-white p-4 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -397,8 +396,8 @@ export default function ApplicationsPage() {
       ) : null}
 
       {preview ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/72 px-5 py-8">
-          <div className="relative w-full max-w-5xl rounded-[32px] bg-white p-5 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/72 px-4 py-6">
+          <div className="relative w-full max-w-5xl rounded-[24px] bg-white p-4 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
             <div className="flex items-center justify-between gap-4 border-b border-[#E5E7EB] pb-4">
               <div>
                 <div className="text-sm font-semibold text-slate-950">{preview.title}</div>
@@ -413,7 +412,7 @@ export default function ApplicationsPage() {
               </button>
             </div>
 
-            <div className="mt-5 h-[75vh] overflow-hidden rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC]">
+            <div className="mt-4 h-[75vh] overflow-hidden rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC]">
               {preview.mimeType.startsWith("image/") ? (
                 <img src={preview.src} alt={preview.fileName} className="h-full w-full object-contain bg-white" />
               ) : (
@@ -425,8 +424,8 @@ export default function ApplicationsPage() {
       ) : null}
 
       {reviewAction ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/70 px-5 py-8">
-          <div className="w-full max-w-2xl rounded-[32px] bg-white p-6 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/70 px-4 py-6">
+          <div className="w-full max-w-2xl rounded-[24px] bg-white p-4 shadow-[0_40px_100px_-45px_rgba(15,23,42,0.5)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Review action</div>
@@ -446,7 +445,7 @@ export default function ApplicationsPage() {
             </div>
 
             <textarea
-              className="mt-5 min-h-40 w-full rounded-[24px] border border-[#E5E7EB] px-4 py-4 text-sm leading-6 outline-none transition focus:border-[#2563EB]"
+              className="mt-4 min-h-40 w-full rounded-[18px] border border-[#E5E7EB] px-3.5 py-3 text-sm leading-6 outline-none transition focus:border-[#2563EB]"
               value={reviewNote}
               onChange={(event) => setReviewNote(event.target.value)}
               placeholder="Write your message here"
