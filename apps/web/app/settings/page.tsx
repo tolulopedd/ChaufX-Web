@@ -163,23 +163,14 @@ export default function SettingsPage() {
     setNotice("");
 
     try {
-      const body =
-        scope === "fallback"
-          ? { fallbackPricing }
-          : scope === "settlement"
-            ? {
-                settlementConfig: {
-                  platformSharePercent
-                }
-              }
-            : {
-                provincePricing,
-                cityPricing: cityPricing.filter((row) => row.province && row.city),
-                fallbackPricing,
-                settlementConfig: {
-                  platformSharePercent
-                }
-              };
+      const body = {
+        provincePricing,
+        cityPricing: cityPricing.filter((row) => row.province && row.city),
+        fallbackPricing,
+        settlementConfig: {
+          platformSharePercent
+        }
+      };
 
       await adminFetch("/admin/settings/pricing", {
         method: "POST",
