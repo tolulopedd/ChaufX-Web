@@ -385,6 +385,7 @@ export async function submitContactMessage(payload: {
 export async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${API_BASE}${path}`, {
+    cache: "no-store",
     ...options,
     headers: {
       "Content-Type": "application/json",
