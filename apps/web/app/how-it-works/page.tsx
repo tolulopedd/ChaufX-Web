@@ -1,9 +1,18 @@
 import { PublicPageShell } from "../../components/public-page-shell";
 
 const customerSteps = [
-  "Confirm your pickup and destination.",
-  "Request a driver now or schedule for later.",
-  "An approved nearby chauffeur accepts the trip."
+  {
+    title: "Tell us where you're going.",
+    body: "Enter your pickup location, destination, and preferred time."
+  },
+  {
+    title: "Get matched with a professional driver.",
+    body: "An approved driver accepts your booking."
+  },
+  {
+    title: "Enjoy the ride.",
+    body: "Relax, work, or spend time with family while your professional driver takes the wheel."
+  }
 ];
 
 const driverSteps = [
@@ -26,9 +35,10 @@ export default function HowItWorksPage() {
               <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">Book in a few clear steps.</h2>
               <div className="mt-6 space-y-4">
                 {customerSteps.map((item, index) => (
-                  <div key={item} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
+                  <div key={item.title} className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-5">
                     <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Step {index + 1}</div>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">{item}</p>
+                    <h3 className="mt-3 text-base font-semibold tracking-[-0.03em] text-[#0F172A]">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
                   </div>
                 ))}
               </div>
