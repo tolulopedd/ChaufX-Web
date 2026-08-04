@@ -58,7 +58,34 @@ function looksLikePublishedDate(value: string) {
     return false;
   }
 
-  return /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},\s+\d{4}/i.test(normalized);
+  return /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},\s+\d{4}$/i.test(normalized);
+}
+
+function collectTextBits(container: Element | null | undefined, title: string) {
+  if (!container) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll("p, span, time"))
+    .map((node) => normalizeText(node.textContent ?? ""))
+    .filter((text) => text && text !== title && text !== `${title}.`);
+}
+
+function pickPublishedLabel(anchor: HTMLAnchorElement, titleNode: Element | null, title: string) {
+  const scopedContainers = [
+    anchor,
+    titleNode?.parentElement ?? null,
+    anchor.closest("article, li")
+  ];
+
+  for (const scopedContainer of scopedContainers) {
+    const publishedLabel = collectTextBits(scopedContainer, title).find((text) => looksLikePublishedDate(text));
+    if (publishedLabel) {
+      return publishedLabel;
+    }
+  }
+
+  return undefined;
 }
 
 export function normalizeArticleHref(href: string) {
@@ -148,7 +175,7 @@ function extractArticlePreviews(root: HTMLElement, limit?: number) {
       continue;
     }
 
-    const container = anchor.closest("article, li, section, div") ?? anchor.parentElement;
+    const container = anchor.closest("article, li") ?? anchor.parentElement;
 
     const titleNode =
       anchor.querySelector("h1, h2, h3, h4, h5, h6") ??
@@ -165,13 +192,8 @@ function extractArticlePreviews(root: HTMLElement, limit?: number) {
       continue;
     }
 
-    const textBits = container
-      ? Array.from(container.querySelectorAll("p, span, time"))
-          .map((node) => normalizeText(node.textContent ?? ""))
-          .filter((text) => text && text !== title && text !== `${title}.`)
-      : [];
-
-    const publishedLabel = textBits.find((text) => looksLikePublishedDate(text)) ?? undefined;
+    const textBits = collectTextBits(container, title);
+    const publishedLabel = pickPublishedLabel(anchor, titleNode ?? null, title);
     const summary =
       textBits.find((text) => text.length >= 40 && text !== publishedLabel) ??
       textBits.find((text) => text !== publishedLabel) ??
@@ -197,7 +219,19 @@ function extractArticlePreviews(root: HTMLElement, limit?: number) {
     }
   }
 
-  return collected;
+  const dateCounts = collected.reduce<Record<string, number>>((counts, article) => {
+    if (article.publishedLabel) {
+      counts[article.publishedLabel] = (counts[article.publishedLabel] ?? 0) + 1;
+    }
+
+    return counts;
+  }, {});
+
+  return collected.map((article) =>
+    article.publishedLabel && dateCounts[article.publishedLabel] > 1
+      ? { ...article, publishedLabel: undefined }
+      : article
+  );
 }
 
 export function useSoroBlogArticles(limit?: number) {
