@@ -94,6 +94,69 @@ function compactVehicleLabel(value?: string) {
   return value.replace(/\s*-\s*/g, " · ");
 }
 
+type MembershipTier = "BASIC" | "PLUS" | "CONCIERGE" | "CORPORATE";
+type MembershipBillingCycle = "MONTHLY" | "ANNUAL";
+
+type MembershipAccount = {
+  membership: {
+    tier: MembershipTier;
+    status: string;
+    billingCycle: MembershipBillingCycle | null;
+    hourlyRate: number;
+    activatedAt: string | null;
+    expiresAt: string | null;
+  };
+  payments: Array<{
+    id: string;
+    invoiceNumber: string;
+    tier: MembershipTier;
+    billingCycle: MembershipBillingCycle;
+    method: string;
+    amount: number;
+    currency: string;
+    status: string;
+    createdAt: string;
+  }>;
+};
+
+const membershipFallback: MembershipAccount = {
+  membership: {
+    tier: "BASIC",
+    status: "ACTIVE",
+    billingCycle: null,
+    hourlyRate: 35,
+    activatedAt: null,
+    expiresAt: null
+  },
+  payments: []
+};
+
+const customerMembershipPlans: Array<{
+  tier: Exclude<MembershipTier, "BASIC" | "CORPORATE">;
+  title: string;
+  hourlyRate: number;
+  monthlyFee: number;
+  annualFee: number;
+  details: string[];
+}> = [
+  {
+    tier: "PLUS",
+    title: "Plus",
+    hourlyRate: 29,
+    monthlyFee: 100,
+    annualFee: 999,
+    details: ["Reduced hourly rate", "Priority booking", "Preferred driver selection"]
+  },
+  {
+    tier: "CONCIERGE",
+    title: "Concierge",
+    hourlyRate: 25,
+    monthlyFee: 200,
+    annualFee: 2199,
+    details: ["Best hourly rate", "Concierge booking support", "Priority high-demand dates"]
+  }
+];
+
 function SectionPanel({
   id,
   eyebrow,
@@ -156,6 +219,95 @@ function MiniStatCard({
       </div>
       <p className={`mt-3 text-sm leading-6 ${dark ? "text-white/78" : "text-slate-600"}`}>{detail}</p>
     </div>
+  );
+}
+
+function MembershipPlanCard({
+  plan,
+  active,
+  interacEmail,
+  actionKey,
+  onStripe,
+  onInterac
+}: {
+  plan: (typeof customerMembershipPlans)[number];
+  active: boolean;
+  interacEmail: string;
+  actionKey: string;
+  onStripe: (tier: "PLUS" | "CONCIERGE", billingCycle: MembershipBillingCycle) => Promise<void>;
+  onInterac: (tier: "PLUS" | "CONCIERGE", billingCycle: MembershipBillingCycle) => Promise<void>;
+}) {
+  const isBusy = actionKey.startsWith(plan.tier);
+
+  return (
+    <article className="rounded-[26px] border border-[#E5E7EB] bg-white p-5 shadow-[0_20px_45px_-40px_rgba(15,23,42,0.22)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4F46E5]">
+            {active ? "Current plan" : "Membership"}
+          </div>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-slate-950">{plan.title}</h3>
+        </div>
+        <div className="rounded-2xl bg-[#EEF0FF] px-4 py-2 text-right text-sm font-semibold text-[#4338CA]">
+          ${plan.hourlyRate}/hr
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl bg-[#F8FAFC] px-4 py-3">
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Monthly</div>
+          <div className="mt-1 text-xl font-semibold tracking-[-0.04em] text-slate-950">{toCurrency(plan.monthlyFee, "CAD")}</div>
+        </div>
+        <div className="rounded-2xl bg-[#F8FAFC] px-4 py-3">
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Annual</div>
+          <div className="mt-1 text-xl font-semibold tracking-[-0.04em] text-slate-950">{toCurrency(plan.annualFee, "CAD")}</div>
+        </div>
+      </div>
+
+      <ul className="mt-4 space-y-2 text-sm leading-6 text-slate-600">
+        {plan.details.map((detail) => (
+          <li key={detail} className="flex gap-2">
+            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#2563EB]" />
+            <span>{detail}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onStripe(plan.tier, "MONTHLY")}
+          disabled={isBusy}
+          className="rounded-full bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionKey === `${plan.tier}:stripe:MONTHLY` ? "Opening..." : "Pay monthly"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onStripe(plan.tier, "ANNUAL")}
+          disabled={isBusy}
+          className="rounded-full border border-[#CBD5E1] px-4 py-2.5 text-sm font-semibold text-[#2563EB] transition disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionKey === `${plan.tier}:stripe:ANNUAL` ? "Opening..." : "Pay yearly"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onInterac(plan.tier, "MONTHLY")}
+          disabled={isBusy || !interacEmail}
+          className="rounded-full border border-[#CBD5E1] px-4 py-2.5 text-sm font-semibold text-slate-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionKey === `${plan.tier}:interac:MONTHLY` ? "Sending..." : "Interac monthly"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onInterac(plan.tier, "ANNUAL")}
+          disabled={isBusy || !interacEmail}
+          className="rounded-full border border-[#CBD5E1] px-4 py-2.5 text-sm font-semibold text-slate-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionKey === `${plan.tier}:interac:ANNUAL` ? "Sending..." : "Interac yearly"}
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -370,9 +522,17 @@ export default function CustomerPortalPage() {
     "/bookings",
     []
   );
+  const {
+    data: membershipAccount,
+    error: membershipError,
+    loading: membershipLoading,
+    reload: reloadMembership
+  } = useCustomerResource<MembershipAccount>("/memberships/me", membershipFallback);
   const [status, setStatus] = useState("");
   const [busyBookingId, setBusyBookingId] = useState("");
   const [payingBookingId, setPayingBookingId] = useState("");
+  const [membershipAction, setMembershipAction] = useState("");
+  const [interacEmail, setInteracEmail] = useState("");
   const [estimateBusy, setEstimateBusy] = useState(false);
   const [estimate, setEstimate] = useState<any | null>(null);
   const [form, setForm] = useState<{
@@ -429,6 +589,12 @@ export default function CustomerPortalPage() {
       }));
     }
   }, [form.vehicleId, profile]);
+
+  useEffect(() => {
+    if (profile?.email && !interacEmail) {
+      setInteracEmail(profile.email);
+    }
+  }, [interacEmail, profile?.email]);
 
   const selectedZone = useMemo(
     () => defaultServiceZones.find((zone) => zone.code === form.zoneCode) ?? defaultServiceZones[0],
@@ -562,6 +728,69 @@ export default function CustomerPortalPage() {
     }
   }
 
+  async function startMembershipStripe(tier: "PLUS" | "CONCIERGE", billingCycle: MembershipBillingCycle) {
+    setMembershipAction(`${tier}:stripe:${billingCycle}`);
+    setStatus("");
+
+    try {
+      const origin = window.location.origin;
+      const result = await customerFetch<{ checkoutUrl?: string | null }>("/memberships/stripe-checkout-session", {
+        method: "POST",
+        body: JSON.stringify({
+          tier,
+          billingCycle,
+          successReturnUrl: `${origin}/customer#membership`,
+          cancelReturnUrl: `${origin}/customer#membership`
+        })
+      });
+
+      if (result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      throw new Error("Stripe checkout could not be opened right now.");
+    } catch (reason) {
+      setStatus(reason instanceof Error ? reason.message : "Unable to start membership checkout right now.");
+    } finally {
+      setMembershipAction("");
+    }
+  }
+
+  async function requestMembershipInterac(tier: "PLUS" | "CONCIERGE", billingCycle: MembershipBillingCycle) {
+    setMembershipAction(`${tier}:interac:${billingCycle}`);
+    setStatus("");
+
+    try {
+      const result = await customerFetch<{
+        instructions: {
+          invoiceNumber: string;
+          amount: number;
+          currency: string;
+        };
+      }>("/memberships/interac-request", {
+        method: "POST",
+        body: JSON.stringify({
+          tier,
+          billingCycle,
+          interacEmail
+        })
+      });
+
+      setStatus(
+        `Interac invoice ${result.instructions.invoiceNumber} was created for ${toCurrency(
+          result.instructions.amount,
+          result.instructions.currency
+        )}.`
+      );
+      await reloadMembership();
+    } catch (reason) {
+      setStatus(reason instanceof Error ? reason.message : "Unable to create the Interac request right now.");
+    } finally {
+      setMembershipAction("");
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f7f7fb_0%,#ffffff_42%,#f3f4f6_100%)] text-[#0F172A]">
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:items-start lg:grid-cols-[240px_1fr]">
@@ -579,6 +808,7 @@ export default function CustomerPortalPage() {
           <nav className="mt-5 space-y-1.5">
             {[
               { href: "#overview", label: "Overview" },
+              { href: "#membership", label: "Membership" },
               { href: "#schedule", label: "Schedule trip" },
               { href: "#awaiting-payment", label: "Awaiting payment" },
               { href: "#upcoming", label: "Upcoming trips" },
@@ -640,6 +870,92 @@ export default function CustomerPortalPage() {
           {status ? <p className="rounded-2xl bg-[#EEF6FF] px-4 py-3 text-sm text-[#1D4ED8]">{status}</p> : null}
           {profileError ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{profileError}</p> : null}
           {bookingsError ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{bookingsError}</p> : null}
+          {membershipError ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{membershipError}</p> : null}
+
+          <SectionPanel
+            id="membership"
+            eyebrow="Membership"
+            title="Pricing and membership"
+            description="Choose pay-as-you-go pricing, upgrade with Stripe, or request an Interac invoice."
+            aside={
+              <a
+                href="/pricing"
+                className="rounded-full border border-[#D7DEEF] px-5 py-2.5 text-sm font-semibold text-[#2563EB] transition hover:bg-[#EEF6FF]"
+              >
+                View pricing page
+              </a>
+            }
+          >
+            <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-[26px] border border-[#E5E7EB] bg-[linear-gradient(180deg,#F8FAFC_0%,#FFFFFF_100%)] p-5">
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Current plan</div>
+                {membershipLoading ? (
+                  <p className="mt-4 text-sm text-slate-500">Loading membership...</p>
+                ) : (
+                  <>
+                    <h3 className="mt-2 text-3xl font-semibold tracking-[-0.06em] text-slate-950">
+                      {statusLabel(membershipAccount.membership.tier)}
+                    </h3>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                      <div className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3">
+                        <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Hourly rate</div>
+                        <div className="mt-1 text-xl font-semibold tracking-[-0.04em] text-slate-950">
+                          {toCurrency(membershipAccount.membership.hourlyRate, "CAD")}/hour
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3">
+                        <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Status</div>
+                        <div className="mt-1 text-xl font-semibold tracking-[-0.04em] text-slate-950">
+                          {statusLabel(membershipAccount.membership.status)}
+                        </div>
+                      </div>
+                    </div>
+                    {membershipAccount.membership.expiresAt ? (
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        Active through {formatDate(membershipAccount.membership.expiresAt)}.
+                      </p>
+                    ) : null}
+                  </>
+                )}
+
+                <label className="mt-5 block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Interac email</span>
+                  <input
+                    type="email"
+                    value={interacEmail}
+                    onChange={(event) => setInteracEmail(event.target.value)}
+                    className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-2.5 outline-none transition focus:border-[#2563EB]"
+                    placeholder="name@example.com"
+                  />
+                </label>
+
+                {membershipAccount.payments[0] ? (
+                  <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+                    <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Latest invoice</div>
+                    <div className="mt-1 font-semibold text-slate-950">{membershipAccount.payments[0].invoiceNumber}</div>
+                    <div>
+                      {statusLabel(membershipAccount.payments[0].status)} ·{" "}
+                      {toCurrency(membershipAccount.payments[0].amount, membershipAccount.payments[0].currency)}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                {customerMembershipPlans.map((plan) => (
+                  <MembershipPlanCard
+                    key={plan.tier}
+                    plan={plan}
+                    active={membershipAccount.membership.tier === plan.tier && membershipAccount.membership.status === "ACTIVE"}
+                    interacEmail={interacEmail}
+                    actionKey={membershipAction}
+                    onStripe={startMembershipStripe}
+                    onInterac={requestMembershipInterac}
+                  />
+                ))}
+              </div>
+            </div>
+          </SectionPanel>
 
           <SectionPanel
             id="schedule"
