@@ -179,7 +179,7 @@ export default function HomePage() {
             Book a Driver
           </Link>
           <Link
-            href="/driver/apply"
+            href="/driver"
             className="inline-flex items-center justify-center rounded-full border border-white/28 bg-white/10 px-[1.875rem] py-[0.9375rem] text-[1.1rem] font-semibold text-white backdrop-blur transition hover:bg-white/16"
           >
             Become a Driver
