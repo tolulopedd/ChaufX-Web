@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatCard, StatusPill } from "../../components/admin-primitives";
+import { EmptyState, StatCard, StatusPill, adminSecondaryButtonClass } from "../../components/admin-primitives";
 import { useAdminResource } from "../../lib/api";
 
 export default function DriversPage() {
@@ -29,7 +30,18 @@ export default function DriversPage() {
                     <div className="text-[1.02rem] font-semibold tracking-[-0.04em] text-slate-950">{driver.user.fullName}</div>
                     <div className="mt-1 text-sm text-slate-500">{driver.user.email}</div>
                   </div>
-                  <StatusPill label={driver.availabilityStatus ? "Available" : "Offline"} tone={driver.availabilityStatus ? "emerald" : "neutral"} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill
+                      label={driver.availabilityStatus ? "Available" : "Offline"}
+                      tone={driver.availabilityStatus ? "emerald" : "neutral"}
+                    />
+                    <Link
+                      href={`/users?userId=${encodeURIComponent(driver.userId)}`}
+                      className={adminSecondaryButtonClass}
+                    >
+                      Manage user
+                    </Link>
+                  </div>
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                   <div className="rounded-2xl border border-white bg-white px-4 py-3">

@@ -13,16 +13,39 @@ type BlogCard = {
   href: string;
   imageSrc?: string | null;
   publishedLabel?: string;
+  publishedTimestamp: number;
   source: "managed" | "soro";
 };
 
-function formatPublishedDate(value?: string | null) {
+function parseDateValue(value?: string | null) {
   if (!value) {
-    return "";
+    return 0;
   }
 
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) {
+    return 0;
+  }
+
+  return parsed.valueOf();
+}
+
+function parsePublishedLabel(value?: string) {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    return 0;
+  }
+
+  return parsed.valueOf();
+}
+
+function formatPublishedDate(value?: string | null) {
+  const timestamp = parseDateValue(value);
+  if (!timestamp) {
     return "";
   }
 
@@ -30,17 +53,20 @@ function formatPublishedDate(value?: string | null) {
     month: "short",
     day: "numeric",
     year: "numeric"
-  }).format(parsed);
+  }).format(new Date(timestamp));
 }
 
 function buildManagedCard(post: ManagedBlogPost): BlogCard {
+  const publishedAt = post.publishedAt ?? post.createdAt;
+
   return {
     key: `managed-${post.id}`,
     title: post.title,
     summary: post.summary,
     href: `/blog/${post.slug}`,
     imageSrc: post.coverImageUrl,
-    publishedLabel: formatPublishedDate(post.publishedAt ?? post.createdAt),
+    publishedLabel: formatPublishedDate(publishedAt),
+    publishedTimestamp: parseDateValue(publishedAt),
     source: "managed"
   };
 }
@@ -104,7 +130,6 @@ function ArticleCard({ article, featured = false }: { article: BlogCard; feature
 
 export function ChaufxBlogGrid() {
   const [managedPosts, setManagedPosts] = useState<ManagedBlogPost[]>([]);
-  const [managedError, setManagedError] = useState("");
   const [managedLoading, setManagedLoading] = useState(true);
   const { articles: soroArticles, loading: soroLoading, sourceNode } = useSoroBlogArticles();
 
@@ -118,14 +143,13 @@ export function ChaufxBlogGrid() {
         }
 
         setManagedPosts(posts);
-        setManagedError("");
       })
-      .catch((error: Error) => {
+      .catch(() => {
         if (!mounted) {
           return;
         }
 
-        setManagedError(error.message);
+        setManagedPosts([]);
       })
       .finally(() => {
         if (mounted) {
@@ -147,14 +171,13 @@ export function ChaufxBlogGrid() {
       href: article.href,
       imageSrc: article.imageSrc,
       publishedLabel: article.publishedLabel,
+      publishedTimestamp: parsePublishedLabel(article.publishedLabel),
       source: "soro" as const
     }));
 
     return [...managedCards, ...soroCards].sort((left, right) => {
-      const leftManaged = left.source === "managed";
-      const rightManaged = right.source === "managed";
-      if (leftManaged !== rightManaged) {
-        return leftManaged ? -1 : 1;
+      if (left.publishedTimestamp !== right.publishedTimestamp) {
+        return right.publishedTimestamp - left.publishedTimestamp;
       }
 
       return left.title.localeCompare(right.title);
@@ -185,8 +208,6 @@ export function ChaufxBlogGrid() {
           <ArticleCard article={featuredArticle} featured />
         </div>
       ) : null}
-
-      {managedError ? <p className="mt-6 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700">{managedError}</p> : null}
 
       <div className="mt-10 flex items-center justify-between gap-3">
         <div>

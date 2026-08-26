@@ -55,7 +55,11 @@ export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
         </section>
       </PublicPageShell>
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "Blog article not found.") {
+      notFound();
+    }
+
     notFound();
   }
 }
