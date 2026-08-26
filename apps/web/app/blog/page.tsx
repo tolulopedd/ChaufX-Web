@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { ChaufxBlogGrid } from "../../components/chaufx-blog-grid";
 import { SoroBlogDetail } from "../../components/soro-blog-detail";
-import { SoroBlogGrid } from "../../components/soro-blog-grid";
 
 export const metadata: Metadata = {
   title: "ChaufX Blog",
@@ -27,7 +27,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
               <SoroBlogDetail post={post} />
             ) : (
               <div className="rounded-[24px] border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:p-6">
-                <SoroBlogGrid />
+                <ChaufxBlogGrid />
               </div>
             )}
           </div>

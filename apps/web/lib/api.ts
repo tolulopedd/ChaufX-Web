@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://chaufx-backend.onrender.com/api";
 const TOKEN_KEY = "chaufx_admin_token";
+const WEB_ROLE_KEY = "chaufx_web_role";
 const DRIVER_TOKEN_KEY = "chaufx_driver_web_token";
 const CUSTOMER_TOKEN_KEY = "chaufx_customer_web_token";
 
@@ -24,6 +25,26 @@ export function setStoredToken(token: string) {
 export function clearStoredToken() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+export function getStoredWebRole() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem(WEB_ROLE_KEY) ?? "";
+}
+
+export function setStoredWebRole(role: "admin" | "marketing") {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(WEB_ROLE_KEY, role);
+  }
+}
+
+export function clearStoredWebRole() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(WEB_ROLE_KEY);
   }
 }
 
@@ -69,6 +90,7 @@ export function clearStoredCustomerToken() {
 
 function handleAdminAuthFailure() {
   clearStoredToken();
+  clearStoredWebRole();
 
   if (typeof window !== "undefined") {
     window.location.href = "/login";
@@ -99,6 +121,9 @@ export async function adminLogin(email: string, password: string) {
   }
 
   setStoredToken(payload.accessToken);
+  if (payload.user?.role === "admin" || payload.user?.role === "marketing") {
+    setStoredWebRole(payload.user.role);
+  }
   return payload;
 }
 
@@ -435,6 +460,34 @@ export async function updateSettlementStatus(
     };
   }>(`/admin/settlements/${driverId}/${weekStart}/status`, {
     method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateAdminUser(
+  userId: string,
+  payload: {
+    fullName: string;
+    email: string;
+    phone?: string;
+    status: "ACTIVE" | "DISABLED" | "PENDING_APPROVAL";
+    membershipTier?: "BASIC" | "PLUS" | "CONCIERGE" | "CORPORATE";
+    membershipStatus?: "ACTIVE" | "AWAITING_PAYMENT" | "CANCELLED" | "EXPIRED";
+    membershipBillingCycle?: "NONE" | "MONTHLY" | "ANNUAL" | "CUSTOM";
+    membershipHourlyRate?: number | null;
+    savedAddresses?: string[];
+    driver?: {
+      licenseNumber: string;
+      yearsOfExperience: number;
+      emergencyContact: string;
+      serviceAreas: string[];
+      availabilitySchedule?: string | null;
+      availabilityStatus: boolean;
+    };
+  }
+) {
+  return adminFetch<any>(`/admin/users/${userId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload)
   });
 }

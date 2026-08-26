@@ -13,6 +13,7 @@ import {
   setStoredCustomerToken,
   setStoredDriverToken,
   setStoredToken,
+  setStoredWebRole,
   webLogin
 } from "../../lib/api";
 
@@ -100,7 +101,15 @@ function LoginPageContent() {
 
       if (result.user.role === "admin") {
         setStoredToken(result.accessToken);
+        setStoredWebRole("admin");
         router.push("/dashboard");
+        return;
+      }
+
+      if (result.user.role === "marketing") {
+        setStoredToken(result.accessToken);
+        setStoredWebRole("marketing");
+        router.push("/blog-manager");
         return;
       }
 

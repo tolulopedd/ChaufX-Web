@@ -1,24 +1,70 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { fetchPublicBlogPosts, type ManagedBlogPost } from "../lib/blog";
 import { useSoroBlogArticles } from "./soro-blog-data";
 
 export function SoroBlogPreview() {
   const { articles, loading, sourceNode } = useSoroBlogArticles(3);
+  const [managedPosts, setManagedPosts] = useState<ManagedBlogPost[]>([]);
+  const [managedLoading, setManagedLoading] = useState(true);
   const placeholders = [0, 1, 2];
+
+  useEffect(() => {
+    let mounted = true;
+
+    fetchPublicBlogPosts()
+      .then((posts) => {
+        if (mounted) {
+          setManagedPosts(posts.slice(0, 3));
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setManagedLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const previewArticles = useMemo(() => {
+    const managed = managedPosts.map((post) => ({
+      key: post.id,
+      href: `/blog/${post.slug}`,
+      imageSrc: post.coverImageUrl,
+      title: post.title,
+      summary: post.summary,
+      publishedLabel: post.publishedAt
+        ? new Intl.DateTimeFormat("en-CA", {
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+          }).format(new Date(post.publishedAt))
+        : undefined
+    }));
+
+    const soro = articles.map((article) => ({
+      key: article.title,
+      ...article
+    }));
+
+    return [...managed, ...soro].slice(0, 3);
+  }, [articles, managedPosts]);
 
   return (
     <>
       {sourceNode}
 
       <div className="mt-8 grid gap-4 md:grid-cols-3">
-        {articles.length
-          ? articles.map((article) => (
+        {previewArticles.length
+          ? previewArticles.map((article) => (
               <a
-                key={article.title}
+                key={article.key}
                 href={article.href}
-                target="_blank"
-                rel="noreferrer"
                 className="flex h-full flex-col overflow-hidden rounded-[28px] border border-dashed border-[#D7DEEF] bg-[#F8FAFC] p-4 transition hover:border-[#C7D2FE] hover:bg-white md:p-5"
               >
                 <div className="overflow-hidden rounded-[22px] bg-[linear-gradient(135deg,#E0E7FF_0%,#F8FAFC_100%)]">
@@ -58,7 +104,7 @@ export function SoroBlogPreview() {
                 <div className="mt-2 h-4 w-11/12 rounded-full bg-[#E2E8F0]" />
                 <div className="mt-4 h-4 w-28 rounded-full bg-[#E2E8F0]" />
                 <div className="mt-auto pt-6 text-sm font-semibold text-[#2563EB]">
-                  {loading ? "Loading latest articles..." : "Read more"}
+                  {loading || managedLoading ? "Loading latest articles..." : "Read more"}
                 </div>
               </Link>
             ))}

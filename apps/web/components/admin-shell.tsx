@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import { AdminBrand } from "./admin-brand";
 import {
   ApplicationsIcon,
+  BlogIcon,
   BookingsIcon,
   DashboardIcon,
   DriversIcon,
@@ -14,20 +15,23 @@ import {
   SettlementsIcon,
   SettingsIcon,
   SignOutIcon,
-  TripsIcon
+  TripsIcon,
+  UsersIcon
 } from "./admin-icons";
-import { clearStoredToken, getStoredToken } from "../lib/api";
+import { clearStoredToken, clearStoredWebRole, getStoredToken, getStoredWebRole } from "../lib/api";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: DashboardIcon },
-  { href: "/drivers", label: "Drivers", icon: DriversIcon },
-  { href: "/applications", label: "Applications", icon: ApplicationsIcon },
-  { href: "/bookings", label: "Bookings", icon: BookingsIcon },
-  { href: "/trips", label: "Active Trips", icon: TripsIcon },
-  { href: "/messages", label: "Messages", icon: MessagesIcon },
-  { href: "/reports", label: "Reports", icon: ReportsIcon },
-  { href: "/settlements", label: "Settlements", icon: SettlementsIcon },
-  { href: "/settings", label: "Settings", icon: SettingsIcon }
+  { href: "/dashboard", label: "Dashboard", icon: DashboardIcon, roles: ["admin"] },
+  { href: "/blog-manager", label: "Blog", icon: BlogIcon, roles: ["admin", "marketing"] },
+  { href: "/users", label: "Users", icon: UsersIcon, roles: ["admin"] },
+  { href: "/drivers", label: "Drivers", icon: DriversIcon, roles: ["admin"] },
+  { href: "/applications", label: "Applications", icon: ApplicationsIcon, roles: ["admin"] },
+  { href: "/bookings", label: "Bookings", icon: BookingsIcon, roles: ["admin"] },
+  { href: "/trips", label: "Active Trips", icon: TripsIcon, roles: ["admin"] },
+  { href: "/messages", label: "Messages", icon: MessagesIcon, roles: ["admin"] },
+  { href: "/reports", label: "Reports", icon: ReportsIcon, roles: ["admin"] },
+  { href: "/settlements", label: "Settlements", icon: SettlementsIcon, roles: ["admin"] },
+  { href: "/settings", label: "Settings", icon: SettingsIcon, roles: ["admin"] }
 ];
 
 export function AdminShell({
@@ -42,6 +46,8 @@ export function AdminShell({
   const pathname = usePathname();
   const router = useRouter();
   const token = getStoredToken();
+  const role = getStoredWebRole();
+  const visibleNavItems = navItems.filter((item) => item.roles.includes(role || "admin"));
 
   return (
     <div className="min-h-screen bg-[#F7F8FB] text-[#0F172A]">
@@ -49,7 +55,7 @@ export function AdminShell({
         <aside className="border-r border-[#E5E7EB] bg-white px-4 py-4">
           <AdminBrand />
           <nav className="mt-4 space-y-1.5">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const active = pathname === item.href;
               const Icon = item.icon;
               return (
@@ -80,6 +86,7 @@ export function AdminShell({
             className="mt-4 flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F3F4F6]"
             onClick={() => {
               clearStoredToken();
+              clearStoredWebRole();
               router.push("/login");
             }}
           >
