@@ -12,7 +12,13 @@ import {
   adminPrimaryButtonClass,
   adminSecondaryButtonClass
 } from "../../components/admin-primitives";
-import { updateAdminUser, useAdminResource } from "../../lib/api";
+import {
+  createAdminUser,
+  deleteAdminUser,
+  resetAdminManagedUserPassword,
+  updateAdminUser,
+  useAdminResource
+} from "../../lib/api";
 
 type AdminUserRecord = {
   id: string;
@@ -53,6 +59,7 @@ type EditableForm = {
   fullName: string;
   email: string;
   phone: string;
+  role: AdminUserRecord["role"];
   status: AdminUserRecord["status"];
   membershipTier: AdminUserRecord["membershipTier"];
   membershipStatus: AdminUserRecord["membershipStatus"];
@@ -67,10 +74,20 @@ type EditableForm = {
   availabilityStatus: "true" | "false";
 };
 
+type CreateUserForm = {
+  fullName: string;
+  email: string;
+  phone: string;
+  password: string;
+  role: AdminUserRecord["role"];
+  status: AdminUserRecord["status"];
+};
+
 const emptyForm: EditableForm = {
   fullName: "",
   email: "",
   phone: "",
+  role: "CUSTOMER",
   status: "ACTIVE",
   membershipTier: "BASIC",
   membershipStatus: "ACTIVE",
@@ -85,6 +102,15 @@ const emptyForm: EditableForm = {
   availabilityStatus: "false"
 };
 
+const emptyCreateUserForm: CreateUserForm = {
+  fullName: "",
+  email: "",
+  phone: "",
+  password: "",
+  role: "CUSTOMER",
+  status: "ACTIVE"
+};
+
 function buildForm(user: AdminUserRecord | null): EditableForm {
   if (!user) {
     return emptyForm;
@@ -94,6 +120,7 @@ function buildForm(user: AdminUserRecord | null): EditableForm {
     fullName: user.fullName ?? "",
     email: user.email ?? "",
     phone: user.phone ?? "",
+    role: user.role,
     status: user.status,
     membershipTier: user.membershipTier,
     membershipStatus: user.membershipStatus,
@@ -120,7 +147,12 @@ function UsersPageContent() {
   const [roleFilter, setRoleFilter] = useState<"ALL" | "CUSTOMER" | "DRIVER" | "ADMIN" | "MARKETING">("ALL");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [form, setForm] = useState<EditableForm>(emptyForm);
+  const [createForm, setCreateForm] = useState<CreateUserForm>(emptyCreateUserForm);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [passwordDraft, setPasswordDraft] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
 
   const filteredUsers = useMemo(() => {
@@ -173,6 +205,7 @@ function UsersPageContent() {
 
   useEffect(() => {
     setForm(buildForm(selectedUser));
+    setPasswordDraft("");
     setStatusMessage("");
   }, [selectedUser]);
 
@@ -193,6 +226,7 @@ function UsersPageContent() {
         fullName: form.fullName.trim(),
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
+        role: form.role,
         status: form.status,
         membershipTier: selectedUser.customerProfile ? form.membershipTier : undefined,
         membershipStatus: selectedUser.customerProfile ? form.membershipStatus : undefined,
@@ -233,6 +267,75 @@ function UsersPageContent() {
     }
   }
 
+  async function handleCreateUser() {
+    setCreating(true);
+    setStatusMessage("");
+
+    try {
+      const createdUser = await createAdminUser({
+        fullName: createForm.fullName.trim(),
+        email: createForm.email.trim(),
+        phone: createForm.phone.trim() || undefined,
+        password: createForm.password,
+        role: createForm.role,
+        status: createForm.status
+      });
+
+      await reload();
+      setCreateForm(emptyCreateUserForm);
+      setSelectedUserId(createdUser.id);
+      setStatusMessage("User created successfully.");
+    } catch (createError) {
+      setStatusMessage(createError instanceof Error ? createError.message : "Unable to create this user.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDeleteUser() {
+    if (!selectedUser) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${selectedUser.fullName}? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleting(true);
+    setStatusMessage("");
+
+    try {
+      await deleteAdminUser(selectedUser.id);
+      await reload();
+      setSelectedUserId("");
+      setStatusMessage("User deleted.");
+    } catch (deleteError) {
+      setStatusMessage(deleteError instanceof Error ? deleteError.message : "Unable to delete this user.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handlePasswordReset() {
+    if (!selectedUser) {
+      return;
+    }
+
+    setResettingPassword(true);
+    setStatusMessage("");
+
+    try {
+      await resetAdminManagedUserPassword(selectedUser.id, passwordDraft);
+      setPasswordDraft("");
+      setStatusMessage("Password updated successfully.");
+    } catch (resetError) {
+      setStatusMessage(resetError instanceof Error ? resetError.message : "Unable to update password.");
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
   return (
     <AdminShell title="Users" description="Manage customer and driver accounts, inspect profile details, and correct onboarding data from one place.">
       <div className="grid gap-4 lg:grid-cols-4">
@@ -241,6 +344,52 @@ function UsersPageContent() {
         <StatCard title="Drivers" value={driverCount} detail="Users with driver access." />
         <StatCard title="Disabled" value={disabledCount} detail="Accounts that cannot sign in." />
       </div>
+
+      <Panel
+        title="Add user"
+        subtitle="Create customer, driver, admin, or marketing accounts directly from the admin workspace."
+        aside={
+          <button type="button" className={adminPrimaryButtonClass} onClick={handleCreateUser} disabled={creating}>
+            {creating ? "Creating..." : "Create user"}
+          </button>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <label className="space-y-1.5 xl:col-span-2">
+            <span className="text-sm font-medium text-slate-700">Full name</span>
+            <input className={adminInputClass} value={createForm.fullName} onChange={(event) => setCreateForm((current) => ({ ...current, fullName: event.target.value }))} />
+          </label>
+          <label className="space-y-1.5 xl:col-span-2">
+            <span className="text-sm font-medium text-slate-700">Email</span>
+            <input className={adminInputClass} value={createForm.email} onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700">Phone</span>
+            <input className={adminInputClass} value={createForm.phone} onChange={(event) => setCreateForm((current) => ({ ...current, phone: event.target.value }))} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700">Temporary password</span>
+            <input type="password" className={adminInputClass} value={createForm.password} onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700">Role</span>
+            <select className={adminInputClass} value={createForm.role} onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value as CreateUserForm["role"] }))}>
+              <option value="CUSTOMER">Customer</option>
+              <option value="DRIVER">Driver</option>
+              <option value="ADMIN">Admin</option>
+              <option value="MARKETING">Marketing</option>
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700">Status</span>
+            <select className={adminInputClass} value={createForm.status} onChange={(event) => setCreateForm((current) => ({ ...current, status: event.target.value as CreateUserForm["status"] }))}>
+              <option value="ACTIVE">Active</option>
+              <option value="PENDING_APPROVAL">Pending approval</option>
+              <option value="DISABLED">Disabled</option>
+            </select>
+          </label>
+        </div>
+      </Panel>
 
       <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
         <Panel
@@ -351,6 +500,15 @@ function UsersPageContent() {
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-slate-700">Phone</span>
                   <input className={adminInputClass} value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-sm font-medium text-slate-700">Role</span>
+                  <select className={adminInputClass} value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as EditableForm["role"] }))}>
+                    <option value="CUSTOMER">Customer</option>
+                    <option value="DRIVER">Driver</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="MARKETING">Marketing</option>
+                  </select>
                 </label>
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-slate-700">Account status</span>
@@ -483,7 +641,58 @@ function UsersPageContent() {
                 </div>
               ) : null}
 
+              {selectedUser.role === "ADMIN" || selectedUser.role === "MARKETING" ? (
+                <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div />
+                    <StatusPill label={`${selectedUser.role} access`} tone="violet" />
+                  </div>
+
+                  <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
+                    <label className="space-y-1.5">
+                      <span className="text-sm font-medium text-slate-700">New password</span>
+                      <input
+                        type="password"
+                        className={adminInputClass}
+                        value={passwordDraft}
+                        onChange={(event) => setPasswordDraft(event.target.value)}
+                        placeholder="Minimum 8 characters"
+                      />
+                    </label>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        className={adminPrimaryButtonClass}
+                        onClick={handlePasswordReset}
+                        disabled={resettingPassword || passwordDraft.trim().length < 8}
+                      >
+                        {resettingPassword ? "Updating..." : "Set password"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {statusMessage ? <p className="text-sm text-[#4338CA]">{statusMessage}</p> : null}
+
+              <div className="flex flex-wrap items-center gap-3 border-t border-[#E5E7EB] pt-4">
+                <button
+                  type="button"
+                  className={adminSecondaryButtonClass}
+                  onClick={() => setForm((current) => ({ ...current, status: "DISABLED" }))}
+                  disabled={saving || deleting}
+                >
+                  Make inactive
+                </button>
+                <button
+                  type="button"
+                  className={adminGhostButtonClass}
+                  onClick={handleDeleteUser}
+                  disabled={saving || deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete user"}
+                </button>
+              </div>
             </div>
           )}
         </Panel>

@@ -470,6 +470,7 @@ export async function updateAdminUser(
     fullName: string;
     email: string;
     phone?: string;
+    role: "CUSTOMER" | "DRIVER" | "ADMIN" | "MARKETING";
     status: "ACTIVE" | "DISABLED" | "PENDING_APPROVAL";
     membershipTier?: "BASIC" | "PLUS" | "CONCIERGE" | "CORPORATE";
     membershipStatus?: "ACTIVE" | "AWAITING_PAYMENT" | "CANCELLED" | "EXPIRED";
@@ -489,6 +490,35 @@ export async function updateAdminUser(
   return adminFetch<any>(`/admin/users/${userId}`, {
     method: "PATCH",
     body: JSON.stringify(payload)
+  });
+}
+
+export async function createAdminUser(payload: {
+  fullName: string;
+  email: string;
+  phone?: string;
+  password: string;
+  role: "CUSTOMER" | "DRIVER" | "ADMIN" | "MARKETING";
+  status: "ACTIVE" | "DISABLED" | "PENDING_APPROVAL";
+}) {
+  return adminFetch<any>("/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteAdminUser(userId: string) {
+  return adminFetch<void>(`/admin/users/${userId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function resetAdminManagedUserPassword(userId: string, newPassword: string) {
+  return adminFetch<{ success: true }>(`/admin/users/${userId}/password`, {
+    method: "POST",
+    body: JSON.stringify({
+      newPassword
+    })
   });
 }
 

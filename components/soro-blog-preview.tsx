@@ -20,6 +20,11 @@ export function SoroBlogPreview() {
           setManagedPosts(posts.slice(0, 3));
         }
       })
+      .catch(() => {
+        if (mounted) {
+          setManagedPosts([]);
+        }
+      })
       .finally(() => {
         if (mounted) {
           setManagedLoading(false);
