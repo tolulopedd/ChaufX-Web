@@ -43,6 +43,17 @@ export function DriversIcon({ className }: IconProps) {
   );
 }
 
+export function UsersIcon({ className }: IconProps) {
+  return (
+    <IconBase className={className}>
+      <circle cx="9" cy="9" r="3" />
+      <circle cx="17" cy="11" r="2.5" />
+      <path d="M4.5 19a4.5 4.5 0 0 1 9 0" />
+      <path d="M14 19a3.5 3.5 0 0 1 6 0" />
+    </IconBase>
+  );
+}
+
 export function ApplicationsIcon({ className }: IconProps) {
   return (
     <IconBase className={className}>
@@ -104,6 +115,16 @@ export function MessagesIcon({ className }: IconProps) {
       <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-5 4v-13.5Z" />
       <path d="M8 8h8" />
       <path d="M8 11h6" />
+    </IconBase>
+  );
+}
+
+export function BlogIcon({ className }: IconProps) {
+  return (
+    <IconBase className={className}>
+      <path d="M6 5.5h12a2 2 0 0 1 2 2V19a1 1 0 0 1-1.6.8L15 17H6a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2Z" />
+      <path d="M8 9h8" />
+      <path d="M8 12.5h8" />
     </IconBase>
   );
 }

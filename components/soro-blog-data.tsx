@@ -61,14 +61,76 @@ function looksLikePublishedDate(value: string) {
   return /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},\s+\d{4}$/i.test(normalized);
 }
 
-function collectTextBits(container: Element | null | undefined, title: string) {
+function isSummaryCandidateText(text: string, title: string, publishedLabel?: string) {
+  const normalized = normalizeText(text);
+  const normalizedTitle = normalizeText(title);
+
+  if (!normalized || normalized === normalizedTitle || normalized === `${normalizedTitle}.`) {
+    return false;
+  }
+
+  if (publishedLabel && normalized === normalizeText(publishedLabel)) {
+    return false;
+  }
+
+  const blockedSnippets = [
+    "chaufx is a personal driver",
+    "read the latest article on the chaufx blog",
+    "blog, news and articles",
+    "read about our latest content",
+    "this section shows our latest blog posts and news summaries",
+    "visit blog",
+    "read more"
+  ];
+
+  const lowered = normalized.toLowerCase();
+  if (blockedSnippets.some((snippet) => lowered.includes(snippet))) {
+    return false;
+  }
+
+  return true;
+}
+
+function collectTextBits(container: Element | null | undefined, title: string, selectors = "p, span, time") {
   if (!container) {
     return [];
   }
 
-  return Array.from(container.querySelectorAll("p, span, time"))
+  return Array.from(container.querySelectorAll(selectors))
     .map((node) => normalizeText(node.textContent ?? ""))
-    .filter((text) => text && text !== title && text !== `${title}.`);
+    .filter((text) => isSummaryCandidateText(text, title));
+}
+
+function uniqueText(values: string[]) {
+  return Array.from(new Set(values.map((value) => normalizeText(value)).filter(Boolean)));
+}
+
+function pickSummary(
+  anchor: HTMLAnchorElement,
+  titleNode: Element | null,
+  container: Element | null,
+  title: string,
+  publishedLabel?: string,
+  seenSummaries?: Set<string>
+) {
+  const articleContainer = anchor.closest("article, li");
+  const titleContainer = titleNode?.parentElement ?? null;
+  const directParagraphs = uniqueText(
+    [titleContainer, articleContainer, container]
+      .filter(Boolean)
+      .flatMap((candidate) => collectTextBits(candidate, title, "p"))
+  ).filter((text) => isSummaryCandidateText(text, title, publishedLabel));
+
+  const fallbackBits = uniqueText(
+    [anchor, titleContainer, articleContainer, container]
+      .filter(Boolean)
+      .flatMap((candidate) => collectTextBits(candidate, title))
+  ).filter((text) => isSummaryCandidateText(text, title, publishedLabel));
+
+  const orderedCandidates = [...directParagraphs, ...fallbackBits];
+  const unseenCandidate = orderedCandidates.find((text) => !seenSummaries?.has(text));
+
+  return unseenCandidate ?? orderedCandidates[0] ?? "Read the latest article on the ChaufX blog.";
 }
 
 function pickPublishedLabel(anchor: HTMLAnchorElement, titleNode: Element | null, title: string) {
@@ -167,6 +229,7 @@ function extractArticlePreviews(root: HTMLElement, limit?: number) {
   const collected: SoroArticle[] = [];
   const seenTitles = new Set<string>();
   const seenImages = new Set<string>();
+  const seenSummaries = new Set<string>();
   const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href]"));
 
   for (const anchor of anchors) {
@@ -192,16 +255,13 @@ function extractArticlePreviews(root: HTMLElement, limit?: number) {
       continue;
     }
 
-    const textBits = collectTextBits(container, title);
     const publishedLabel = pickPublishedLabel(anchor, titleNode ?? null, title);
-    const summary =
-      textBits.find((text) => text.length >= 40 && text !== publishedLabel) ??
-      textBits.find((text) => text !== publishedLabel) ??
-      "Read the latest article on the ChaufX blog.";
+    const summary = pickSummary(anchor, titleNode ?? null, container ?? null, title, publishedLabel, seenSummaries);
 
     const imageSrc = pickBestImage(anchor ?? null, titleNode ?? null, container ?? null, seenImages);
 
     seenTitles.add(title);
+    seenSummaries.add(summary);
     if (imageSrc) {
       seenImages.add(imageSrc);
     }
@@ -243,6 +303,7 @@ export function useSoroBlogArticles(limit?: number) {
     let mounted = true;
     let observer: MutationObserver | null = null;
     const timers: number[] = [];
+    let injectedScript: HTMLScriptElement | null = null;
 
     const tryExtract = () => {
       if (!mounted || !sourceRef.current) {
@@ -260,18 +321,30 @@ export function useSoroBlogArticles(limit?: number) {
     };
 
     const startObserving = () => {
+      if (observer || !sourceRef.current) {
+        return;
+      }
+
       observer = new MutationObserver(() => {
         if (tryExtract() && observer) {
           observer.disconnect();
         }
       });
 
-      if (sourceRef.current) {
-        observer.observe(sourceRef.current, { childList: true, subtree: true });
-      }
+      observer.observe(sourceRef.current, { childList: true, subtree: true });
 
+      timers.push(window.setTimeout(() => tryExtract(), 300));
       timers.push(window.setTimeout(() => tryExtract(), 1200));
       timers.push(window.setTimeout(() => tryExtract(), 2600));
+      timers.push(
+        window.setTimeout(() => {
+          if (!mounted || articles.length || !sourceRef.current?.childElementCount) {
+            return;
+          }
+
+          mountScript(true);
+        }, 1800)
+      );
       timers.push(window.setTimeout(() => {
         if (mounted) {
           setLoading(false);
@@ -279,13 +352,20 @@ export function useSoroBlogArticles(limit?: number) {
       }, 5000));
     };
 
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${soroScriptSrc}"]`);
-
-    if (existing) {
-      if (!tryExtract()) {
-        startObserving();
+    const mountScript = (forceReload = false) => {
+      if (!mounted || !sourceRef.current) {
+        return;
       }
-    } else {
+
+      if (forceReload) {
+        sourceRef.current.innerHTML = "";
+      }
+
+      const existing = document.querySelector<HTMLScriptElement>(`script[src="${soroScriptSrc}"]`);
+      if (existing && !forceReload && tryExtract()) {
+        return;
+      }
+
       const script = document.createElement("script");
       script.src = soroScriptSrc;
       script.defer = true;
@@ -295,6 +375,14 @@ export function useSoroBlogArticles(limit?: number) {
         }
       };
       document.body.appendChild(script);
+      injectedScript = script;
+    };
+
+    startObserving();
+    if (!tryExtract()) {
+      mountScript();
+    } else {
+      setLoading(false);
     }
 
     return () => {
@@ -305,8 +393,9 @@ export function useSoroBlogArticles(limit?: number) {
       for (const timer of timers) {
         window.clearTimeout(timer);
       }
+      injectedScript?.remove();
     };
-  }, [limit]);
+  }, [limit, articles.length]);
 
   return {
     articles,
