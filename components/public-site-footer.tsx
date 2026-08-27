@@ -8,6 +8,7 @@ const quickLinks = [
   { label: "Become a Driver", href: "/driver" },
   { label: "Blog", href: "/blog" },
   { label: "Contact", href: "/contact" },
+  { label: "Delete Account", href: "/delete-account" },
   { label: "FAQ", href: "/faq" },
   { label: "Policies", href: "/policies" },
   { label: "Privacy Policy", href: "/policies/privacy-policy" },

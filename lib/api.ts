@@ -386,6 +386,7 @@ export async function submitContactMessage(payload: {
   province?: string;
   subject?: string;
   message: string;
+  source?: string;
 }) {
   const response = await fetch(`${API_BASE}/contact-messages`, {
     method: "POST",
@@ -394,7 +395,7 @@ export async function submitContactMessage(payload: {
     },
     body: JSON.stringify({
       ...payload,
-      source: "website"
+      source: payload.source ?? "website"
     })
   });
 

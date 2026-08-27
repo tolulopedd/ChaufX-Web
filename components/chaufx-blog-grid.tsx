@@ -194,12 +194,12 @@ export function ChaufxBlogGrid() {
       {sourceNode}
 
       <div className="rounded-[28px] border border-[#E5E7EB] bg-white p-5 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.12)] md:p-7">
-        <div className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">Blog & Articles</div>
+        <div className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">Blogs, News & Articles</div>
         <h1 className="mt-4 max-w-4xl text-[2.6rem] font-semibold leading-[0.96] tracking-[-0.07em] text-[#0F172A] md:text-[4.35rem]">
-          ChaufX insights, driver stories, and customer travel guidance across Canada.
+          Travel Tips, Stories & Updates
         </h1>
         <p className="mt-5 max-w-4xl text-lg leading-8 text-slate-600">
-          We’re keeping the existing Soro content live while adding first-class ChaufX articles that your team can now manage directly.
+          Explore expert travel tips, driver stories, ChaufX updates, and practical guides designed to make every journey across Canada smoother, safer, and more enjoyable.
         </p>
       </div>
 
