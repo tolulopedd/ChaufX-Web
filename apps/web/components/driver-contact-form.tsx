@@ -22,13 +22,21 @@ const provincesAndTerritories = [
 type DriverContactFormProps = {
   defaultSubject?: string;
   buttonLabel?: string;
+  source?: string;
+  initialOpen?: boolean;
+  defaultMessage?: string;
+  messageLabel?: string;
 };
 
 export function DriverContactForm({
   defaultSubject = "General inquiry",
-  buttonLabel = "Send a message"
+  buttonLabel = "Send a message",
+  source = "website",
+  initialOpen = false,
+  defaultMessage = "",
+  messageLabel = "Message"
 }: DriverContactFormProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [form, setForm] = useState({
@@ -36,7 +44,7 @@ export function DriverContactForm({
     email: "",
     province: "",
     subject: defaultSubject,
-    message: ""
+    message: defaultMessage
   });
 
   return (
@@ -66,7 +74,8 @@ export function DriverContactForm({
                 email: form.email,
                 province: form.province || undefined,
                 subject: form.subject || undefined,
-                message: form.message
+                message: form.message,
+                source
               });
               setStatus("Your message has been sent to the ChaufX admin team.");
               setForm({
@@ -74,7 +83,7 @@ export function DriverContactForm({
                 email: "",
                 province: "",
                 subject: defaultSubject,
-                message: ""
+                message: defaultMessage
               });
               setOpen(false);
             } catch (reason) {
@@ -135,7 +144,7 @@ export function DriverContactForm({
           </div>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Message</span>
+            <span className="mb-2 block text-sm font-medium text-slate-700">{messageLabel}</span>
             <textarea
               className="min-h-[140px] w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]"
               value={form.message}

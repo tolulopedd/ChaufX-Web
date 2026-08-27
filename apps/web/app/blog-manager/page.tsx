@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AdminShell, Panel } from "../../components/admin-shell";
+import { ManagedBlogArticle } from "../../components/managed-blog-article";
 import {
   EmptyState,
   StatCard,
@@ -51,15 +52,39 @@ function buildForm(post?: ManagedBlogPost | null): EditableBlogForm {
   };
 }
 
+function buildPreviewPost(form: EditableBlogForm): ManagedBlogPost {
+  const now = new Date().toISOString();
+
+  return {
+    id: "preview",
+    title: form.title.trim() || "Untitled article",
+    slug: form.slug.trim() || "preview-article",
+    summary: form.summary.trim() || "",
+    body: form.body.trim() || "Start writing your article here.",
+    coverImageUrl: form.coverImageUrl.trim() || null,
+    status: form.status,
+    publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : now,
+    createdAt: now,
+    updatedAt: now,
+    author: {
+      id: "preview-author",
+      fullName: "Preview",
+      email: "preview@chaufx.ca"
+    }
+  };
+}
+
 export default function BlogManagerPage() {
   const [posts, setPosts] = useState<ManagedBlogPost[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<EditableBlogForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState("");
+  const [editorMode, setEditorMode] = useState<"write" | "preview">("write");
 
   async function loadPosts() {
     setLoading(true);
@@ -67,9 +92,6 @@ export default function BlogManagerPage() {
       const result = await adminFetch<ManagedBlogPost[]>("/admin/blog-posts");
       setPosts(result);
       setError("");
-      if (!selectedId && result[0]?.id) {
-        setSelectedId(result[0].id);
-      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load blog articles.");
     } finally {
@@ -99,12 +121,14 @@ export default function BlogManagerPage() {
   const selectedPost =
     filteredPosts.find((post) => post.id === selectedId) ??
     posts.find((post) => post.id === selectedId) ??
-    filteredPosts[0] ??
     null;
 
   useEffect(() => {
-    setForm(buildForm(selectedPost));
-    setStatusMessage("");
+    if (selectedPost) {
+      setForm(buildForm(selectedPost));
+      setIsCreating(false);
+      setStatusMessage("");
+    }
   }, [selectedPost]);
 
   const publishedCount = posts.filter((post) => post.status === "PUBLISHED").length;
@@ -131,11 +155,13 @@ export default function BlogManagerPage() {
           body: JSON.stringify(payload)
         });
       } else {
-        const created = await adminFetch<ManagedBlogPost>("/admin/blog-posts", {
+        await adminFetch<ManagedBlogPost>("/admin/blog-posts", {
           method: "POST",
           body: JSON.stringify(payload)
         });
-        setSelectedId(created.id);
+        setSelectedId("");
+        setIsCreating(false);
+        setForm(emptyForm);
       }
 
       await loadPosts();
@@ -160,6 +186,8 @@ export default function BlogManagerPage() {
         method: "DELETE"
       });
       setSelectedId("");
+      setIsCreating(false);
+      setForm(emptyForm);
       await loadPosts();
       setStatusMessage("Blog article deleted.");
     } catch (deleteError) {
@@ -169,35 +197,65 @@ export default function BlogManagerPage() {
     }
   }
 
+  async function handleMakeInactive() {
+    if (!selectedPost) {
+      return;
+    }
+
+    setSaving(true);
+    setStatusMessage("");
+
+    try {
+      await adminFetch(`/admin/blog-posts/${selectedPost.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "DRAFT"
+        })
+      });
+      await loadPosts();
+      setStatusMessage("Article moved to draft.");
+    } catch (inactiveError) {
+      setStatusMessage(inactiveError instanceof Error ? inactiveError.message : "Unable to update this article.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function insertBodySnippet(snippet: string) {
+    setForm((current) => ({
+      ...current,
+      body: current.body.trim() ? `${current.body.replace(/\s*$/, "")}\n\n${snippet}` : snippet
+    }));
+  }
+
+  const previewPost = useMemo(() => buildPreviewPost(form), [form]);
+
   return (
-    <AdminShell
-      title="Blog"
-      description="Create, edit, and publish ChaufX articles while keeping the existing Soro blog content live on the public site."
-    >
+    <AdminShell title="Blog" description="Articles.">
       <div className="grid gap-4 lg:grid-cols-3">
-        <StatCard title="Managed posts" value={posts.length} detail="Articles stored directly in ChaufX." />
-        <StatCard title="Published" value={publishedCount} detail="Visible on the public blog." />
-        <StatCard title="Drafts" value={draftCount} detail="Internal work that is not live yet." />
+        <StatCard title="Articles" value={posts.length} detail="All articles." />
+        <StatCard title="Published" value={publishedCount} detail="Live articles." />
+        <StatCard title="Drafts" value={draftCount} detail="Unpublished articles." />
+      </div>
+
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          className={adminSecondaryButtonClass}
+          onClick={() => {
+            setSelectedId("");
+            setIsCreating(true);
+            setForm(emptyForm);
+            setStatusMessage("");
+            setEditorMode("write");
+          }}
+        >
+          Create article
+        </button>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[400px_1fr]">
-        <Panel
-          title="Article library"
-          subtitle="Select an article to edit or start a new ChaufX post."
-          aside={
-            <button
-              type="button"
-              className={adminSecondaryButtonClass}
-              onClick={() => {
-                setSelectedId("");
-                setForm(emptyForm);
-                setStatusMessage("");
-              }}
-            >
-              New article
-            </button>
-          }
-        >
+        <Panel title="Articles">
           <div className="space-y-3">
             <input
               value={query}
@@ -217,7 +275,12 @@ export default function BlogManagerPage() {
                     <button
                       key={post.id}
                       type="button"
-                      onClick={() => setSelectedId(post.id)}
+                      onClick={() => {
+                        setSelectedId(post.id);
+                        setIsCreating(false);
+                        setStatusMessage("");
+                        setEditorMode("write");
+                      }}
                       className={`w-full rounded-[18px] border p-4 text-left transition ${
                         active
                           ? "border-[#C7D2FE] bg-[#EEF2FF]"
@@ -237,112 +300,180 @@ export default function BlogManagerPage() {
                 })}
               </div>
             ) : (
-              <EmptyState
-                title="No blog articles yet"
-                description="Start your first managed ChaufX article here. Soro content will still remain visible on the public blog."
-              />
+              <EmptyState title="No articles yet" />
             )}
           </div>
         </Panel>
 
-        <Panel
-          title={selectedPost ? "Edit article" : "Create article"}
-          subtitle="Keep the summary tight for the card view, then add the full article body for the detail page."
-          aside={
-            selectedPost ? (
-              <Link href={`/blog/${selectedPost.slug}`} target="_blank" className={adminGhostButtonClass}>
-                View live article
-              </Link>
-            ) : null
-          }
-        >
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Title</span>
-              <input
-                value={form.title}
-                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                className={adminInputClass}
-                placeholder="What Is ChaufX? Everything You Need to Know"
-              />
-            </label>
+        {selectedPost || isCreating ? (
+          <Panel
+            title={selectedPost ? "Edit article" : "Create article"}
+            aside={
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={editorMode === "write" ? adminPrimaryButtonClass : adminGhostButtonClass}
+                  onClick={() => setEditorMode("write")}
+                >
+                  Write
+                </button>
+                <button
+                  type="button"
+                  className={editorMode === "preview" ? adminPrimaryButtonClass : adminGhostButtonClass}
+                  onClick={() => setEditorMode("preview")}
+                >
+                  Preview
+                </button>
+                {selectedPost ? (
+                  <Link href={`/blog/${selectedPost.slug}`} target="_blank" className={adminGhostButtonClass}>
+                    View article
+                  </Link>
+                ) : null}
+              </div>
+            }
+          >
+            {editorMode === "write" ? (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Title</span>
+                    <input
+                      value={form.title}
+                      onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                      className={adminInputClass}
+                      placeholder="What Is ChaufX? Everything You Need to Know"
+                    />
+                  </label>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Slug</span>
-              <input
-                value={form.slug}
-                onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value }))}
-                className={adminInputClass}
-                placeholder="what-is-chaufx-everything-you-need-to-know"
-              />
-            </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Slug</span>
+                    <input
+                      value={form.slug}
+                      onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value }))}
+                      className={adminInputClass}
+                      placeholder="what-is-chaufx-everything-you-need-to-know"
+                    />
+                  </label>
 
-            <label className="block md:col-span-2">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Summary</span>
-              <textarea
-                value={form.summary}
-                onChange={(event) => setForm((current) => ({ ...current, summary: event.target.value }))}
-                className={`${adminInputClass} min-h-[110px]`}
-                placeholder="Short card summary shown on the public blog listing."
-              />
-            </label>
+                  <label className="block md:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Summary</span>
+                    <textarea
+                      value={form.summary}
+                      onChange={(event) => setForm((current) => ({ ...current, summary: event.target.value }))}
+                      className={`${adminInputClass} min-h-[110px]`}
+                      placeholder="Summary"
+                    />
+                  </label>
 
-            <label className="block md:col-span-2">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Cover image URL</span>
-              <input
-                value={form.coverImageUrl}
-                onChange={(event) => setForm((current) => ({ ...current, coverImageUrl: event.target.value }))}
-                className={adminInputClass}
-                placeholder="https://..."
-              />
-            </label>
+                  <label className="block md:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Cover image URL</span>
+                    <input
+                      value={form.coverImageUrl}
+                      onChange={(event) => setForm((current) => ({ ...current, coverImageUrl: event.target.value }))}
+                      className={adminInputClass}
+                      placeholder="https://..."
+                    />
+                  </label>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Status</span>
-              <select
-                value={form.status}
-                onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as EditableBlogForm["status"] }))}
-                className={adminInputClass}
-              >
-                <option value="DRAFT">Draft</option>
-                <option value="PUBLISHED">Published</option>
-              </select>
-            </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Status</span>
+                    <select
+                      value={form.status}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, status: event.target.value as EditableBlogForm["status"] }))
+                      }
+                      className={adminInputClass}
+                    >
+                      <option value="DRAFT">Draft</option>
+                      <option value="PUBLISHED">Published</option>
+                    </select>
+                  </label>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Published at</span>
-              <input
-                type="datetime-local"
-                value={form.publishedAt}
-                onChange={(event) => setForm((current) => ({ ...current, publishedAt: event.target.value }))}
-                className={adminInputClass}
-              />
-            </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Published at</span>
+                    <input
+                      type="datetime-local"
+                      value={form.publishedAt}
+                      onChange={(event) => setForm((current) => ({ ...current, publishedAt: event.target.value }))}
+                      className={adminInputClass}
+                    />
+                  </label>
 
-            <label className="block md:col-span-2">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Article body</span>
-              <textarea
-                value={form.body}
-                onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
-                className={`${adminInputClass} min-h-[420px]`}
-                placeholder={"Use blank lines between paragraphs. Use ## for section headings and - for bullet lists."}
-              />
-            </label>
-          </div>
+                  <div className="md:col-span-2 flex flex-wrap gap-2">
+                    <button type="button" className={adminGhostButtonClass} onClick={() => insertBodySnippet("## Section heading")}>
+                      H2
+                    </button>
+                    <button type="button" className={adminGhostButtonClass} onClick={() => insertBodySnippet("### Subheading")}>
+                      H3
+                    </button>
+                    <button type="button" className={adminGhostButtonClass} onClick={() => insertBodySnippet("- Bullet point")}>
+                      Bullet
+                    </button>
+                    <button
+                      type="button"
+                      className={adminGhostButtonClass}
+                      onClick={() => insertBodySnippet("![Image alt](https://example.com/image.jpg)")}
+                    >
+                      Image
+                    </button>
+                    <button
+                      type="button"
+                      className={adminGhostButtonClass}
+                      onClick={() => insertBodySnippet("video[Video title]: https://www.youtube.com/watch?v=VIDEO_ID")}
+                    >
+                      Video
+                    </button>
+                  </div>
 
-          {statusMessage ? <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">{statusMessage}</p> : null}
+                  <label className="block md:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Article body</span>
+                    <textarea
+                      value={form.body}
+                      onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
+                      className={`${adminInputClass} min-h-[420px]`}
+                      placeholder="Write your article"
+                    />
+                  </label>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-[24px] bg-[#F8FAFC] p-3">
+                <ManagedBlogArticle post={previewPost} />
+              </div>
+            )}
 
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button type="button" className={adminPrimaryButtonClass} onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : selectedPost ? "Save changes" : "Create article"}
-            </button>
-            {selectedPost ? (
-              <button type="button" className={adminGhostButtonClass} onClick={handleDelete} disabled={saving}>
-                Delete article
+            {statusMessage ? <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">{statusMessage}</p> : null}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button type="button" className={adminPrimaryButtonClass} onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : selectedPost ? "Save changes" : "Create article"}
               </button>
-            ) : null}
-          </div>
-        </Panel>
+              {selectedPost ? (
+                <button type="button" className={adminGhostButtonClass} onClick={handleDelete} disabled={saving}>
+                  Delete article
+                </button>
+              ) : null}
+              {selectedPost && selectedPost.status === "PUBLISHED" ? (
+                <button type="button" className={adminGhostButtonClass} onClick={handleMakeInactive} disabled={saving}>
+                  Make inactive
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={adminGhostButtonClass}
+                onClick={() => {
+                  setSelectedId("");
+                  setIsCreating(false);
+                  setForm(emptyForm);
+                  setStatusMessage("");
+                }}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+            </div>
+          </Panel>
+        ) : null}
       </div>
     </AdminShell>
   );
