@@ -337,17 +337,17 @@ function UsersPageContent() {
   }
 
   return (
-    <AdminShell title="Users" description="Manage customer and driver accounts, inspect profile details, and correct onboarding data from one place.">
+    <AdminShell title="Users" description="Manage accounts.">
       <div className="grid gap-4 lg:grid-cols-4">
-        <StatCard title="All accounts" value={data.length} detail="Customer, driver, admin, and marketing users." />
-        <StatCard title="Customers" value={customerCount} detail="Users with customer access." />
-        <StatCard title="Drivers" value={driverCount} detail="Users with driver access." />
-        <StatCard title="Disabled" value={disabledCount} detail="Accounts that cannot sign in." />
+        <StatCard title="All accounts" value={data.length} detail="All roles." />
+        <StatCard title="Customers" value={customerCount} detail="Customer accounts." />
+        <StatCard title="Drivers" value={driverCount} detail="Driver accounts." />
+        <StatCard title="Disabled" value={disabledCount} detail="Inactive accounts." />
       </div>
 
       <Panel
         title="Add user"
-        subtitle="Create customer, driver, admin, or marketing accounts directly from the admin workspace."
+        subtitle="Create a new account."
         aside={
           <button type="button" className={adminPrimaryButtonClass} onClick={handleCreateUser} disabled={creating}>
             {creating ? "Creating..." : "Create user"}
@@ -394,7 +394,7 @@ function UsersPageContent() {
       <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
         <Panel
           title="User directory"
-          subtitle="Search by name, email, phone, or driver service area."
+          subtitle="Search users."
           aside={
             <div className="flex flex-wrap items-center gap-2">
               <select className={adminInputClass} value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>

@@ -17,13 +17,36 @@ function formatArticleDate(value?: string | null) {
   }).format(parsed);
 }
 
-function renderBody(body: string) {
+type ArticleBlock =
+  | { type: "heading"; level: 2 | 3; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "image"; src: string; alt: string }
+  | { type: "video"; src: string; title: string };
+
+function isVideoUrl(value: string) {
+  return /(youtube\.com\/watch\?v=|youtu\.be\/|vimeo\.com\/|\.mp4($|\?))/i.test(value);
+}
+
+function buildVideoEmbedUrl(value: string) {
+  const url = value.trim();
+
+  const youtubeMatch = url.match(/[?&]v=([^&]+)/i) ?? url.match(/youtu\.be\/([^?&/]+)/i);
+  if (youtubeMatch?.[1]) {
+    return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+  }
+
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/i);
+  if (vimeoMatch?.[1]) {
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  }
+
+  return url;
+}
+
+export function renderArticleBody(body: string) {
   const lines = body.replace(/\r/g, "").split("\n");
-  const blocks: Array<
-    | { type: "heading"; level: 2 | 3; text: string }
-    | { type: "paragraph"; text: string }
-    | { type: "list"; items: string[] }
-  > = [];
+  const blocks: ArticleBlock[] = [];
 
   let paragraphBuffer: string[] = [];
   let listBuffer: string[] = [];
@@ -71,6 +94,30 @@ function renderBody(body: string) {
       continue;
     }
 
+    const imageMatch = line.match(/^!\[(.*?)\]\((https?:\/\/[^\s)]+)\)$/i);
+    if (imageMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push({
+        type: "image",
+        alt: imageMatch[1].trim() || "Article image",
+        src: imageMatch[2].trim()
+      });
+      continue;
+    }
+
+    const videoMatch = line.match(/^video(?:\[(.*?)\])?:\s*(https?:\/\/\S+)$/i);
+    if (videoMatch && isVideoUrl(videoMatch[2])) {
+      flushParagraph();
+      flushList();
+      blocks.push({
+        type: "video",
+        title: videoMatch[1]?.trim() || "Article video",
+        src: buildVideoEmbedUrl(videoMatch[2])
+      });
+      continue;
+    }
+
     flushList();
     paragraphBuffer.push(line);
   }
@@ -83,7 +130,7 @@ function renderBody(body: string) {
 
 export function ManagedBlogArticle({ post }: { post: ManagedBlogPost }) {
   const publishedLabel = formatArticleDate(post.publishedAt ?? post.createdAt);
-  const blocks = renderBody(post.body);
+  const blocks = renderArticleBody(post.body);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -136,6 +183,38 @@ export function ManagedBlogArticle({ post }: { post: ManagedBlogPost }) {
                         <li key={item}>{item}</li>
                       ))}
                     </ul>
+                  );
+                }
+
+                if (block.type === "image") {
+                  return (
+                    <div key={`${block.type}-${index}`} className="overflow-hidden rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC]">
+                      <img src={block.src} alt={block.alt} className="w-full object-cover" />
+                    </div>
+                  );
+                }
+
+                if (block.type === "video") {
+                  const isDirectVideo = /\.mp4($|\?)/i.test(block.src);
+                  return (
+                    <div key={`${block.type}-${index}`} className="space-y-3">
+                      {block.title ? (
+                        <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{block.title}</div>
+                      ) : null}
+                      <div className="overflow-hidden rounded-[28px] border border-[#E5E7EB] bg-[#0F172A]">
+                        {isDirectVideo ? (
+                          <video src={block.src} controls className="w-full" />
+                        ) : (
+                          <iframe
+                            src={block.src}
+                            title={block.title}
+                            className="aspect-video w-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        )}
+                      </div>
+                    </div>
                   );
                 }
 
