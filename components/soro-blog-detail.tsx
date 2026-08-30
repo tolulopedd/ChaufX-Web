@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 const soroScriptSrc = "https://app.trysoro.com/api/embed/2cfcc629-018f-4439-9ba7-4623f08c2651";
 
@@ -10,20 +10,30 @@ type SoroBlogDetailProps = {
 };
 
 export function SoroBlogDetail({ post }: SoroBlogDetailProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const url = new URL(window.location.href);
     url.searchParams.set("post", post);
     window.history.replaceState({}, "", url.toString());
 
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${soroScriptSrc}"]`);
-    if (existing) {
-      return;
+    if (containerRef.current) {
+      containerRef.current.innerHTML = "";
     }
+
+    const existingScripts = Array.from(
+      document.querySelectorAll<HTMLScriptElement>(`script[src="${soroScriptSrc}"]`)
+    );
+    existingScripts.forEach((script) => script.remove());
 
     const script = document.createElement("script");
     script.src = soroScriptSrc;
     script.defer = true;
     document.body.appendChild(script);
+
+    return () => {
+      script.remove();
+    };
   }, [post]);
 
   return (
@@ -42,7 +52,7 @@ export function SoroBlogDetail({ post }: SoroBlogDetailProps) {
         <div className="mt-6 overflow-hidden rounded-[32px] border border-[#E5E7EB] bg-white shadow-[0_36px_90px_-60px_rgba(15,23,42,0.26)]">
           <div className="px-5 py-8 md:px-10 md:py-12">
             <div className="editorial-shell mx-auto max-w-3xl">
-              <div id="soro-blog" />
+              <div id="soro-blog" key={post} ref={containerRef} />
             </div>
           </div>
         </div>
