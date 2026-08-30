@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { PublicPageShell } from "../../components/public-page-shell";
 import { ChaufxBlogGrid } from "../../components/chaufx-blog-grid";
 import { SoroBlogDetail } from "../../components/soro-blog-detail";
+import { fetchPublicBlogPost } from "../../lib/blog";
 
 export const metadata: Metadata = {
   title: "ChaufX Blog",
@@ -17,6 +19,15 @@ type BlogPageProps = {
 
 export default async function BlogPage({ searchParams }: BlogPageProps) {
   const { post } = await searchParams;
+
+  if (post) {
+    try {
+      const managedPost = await fetchPublicBlogPost(post);
+      redirect(`/blog/${managedPost.slug}`);
+    } catch {
+      // Fall back to the legacy Soro embed for non-managed articles.
+    }
+  }
 
   return (
     <PublicPageShell>
