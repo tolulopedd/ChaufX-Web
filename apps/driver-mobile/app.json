@@ -22,7 +22,7 @@
         "NSUserNotificationsUsageDescription": "ChaufX uses notifications to alert you about new bookings and trip lifecycle updates."
       },
       "bundleIdentifier": "ca.chaufx.driver",
-      "buildNumber": "13"
+      "buildNumber": "19"
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +36,7 @@
         "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "ca.chaufx.driver",
-      "versionCode": 16
+      "versionCode": 24
     },
     "assetBundlePatterns": [
       "**/*"

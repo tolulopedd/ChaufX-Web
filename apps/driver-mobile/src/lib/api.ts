@@ -125,7 +125,7 @@ export function login(email: string, password: string) {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, password, expectedApp: "driver" })
         });
         const payload = await response.json();
         if (!response.ok) {
@@ -303,6 +303,29 @@ export function endTrip(token: string, bookingId: string) {
 
 export function fetchMapState(token: string, bookingId: string) {
   return request<any>(`/trips/${bookingId}/map-state?_=${Date.now()}`, token);
+}
+
+export type TripMessage = {
+  id: string;
+  bookingId: string;
+  body: string;
+  createdAt: string;
+  sender: {
+    id: string;
+    role: string;
+    fullName: string;
+  };
+};
+
+export function fetchTripMessages(token: string, bookingId: string) {
+  return request<TripMessage[]>(`/bookings/${bookingId}/messages`, token);
+}
+
+export function sendTripMessage(token: string, bookingId: string, body: string) {
+  return request<TripMessage>(`/bookings/${bookingId}/messages`, token, {
+    method: "POST",
+    body: JSON.stringify({ body })
+  });
 }
 
 export function shareLocation(

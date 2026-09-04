@@ -121,10 +121,34 @@ export type Session = {
   };
 };
 
+export type TripMessage = {
+  id: string;
+  bookingId: string;
+  body: string;
+  createdAt: string;
+  sender: {
+    id: string;
+    role: string;
+    fullName: string;
+  };
+};
+
 export function login(email: string, password: string) {
   return request<Session>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password, expectedApp: "customer" })
+  });
+}
+
+export function requestCustomerVerificationEmail(payload: {
+  fullName: string;
+  email: string;
+  phone?: string;
+  password: string;
+}) {
+  return request<{ message: string; previewUrl?: string }>("/auth/verify-email/request/customer", {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 
@@ -132,6 +156,40 @@ export function requestPasswordReset(email: string) {
   return request<{ message: string }>("/auth/forgot-password", {
     method: "POST",
     body: JSON.stringify({ email })
+  });
+}
+
+export type CustomerProfileUpdate = {
+  phone?: string;
+  dateOfBirth?: string;
+  primaryAddress?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  vehicle?: {
+    make: string;
+    model: string;
+    plateNumber: string;
+    registrationProvince: string;
+  };
+  vehicleComplianceConfirmed?: boolean;
+  termsAccepted?: boolean;
+  privacyPolicyAccepted?: boolean;
+  identityVerificationConsented?: boolean;
+  vehicleAuthorityConfirmed?: boolean;
+  governmentPhotoId?: {
+    fileName: string;
+    fileUrl: string;
+    mimeType?: string;
+  };
+};
+
+export function updateCustomerProfile(token: string, payload: CustomerProfileUpdate) {
+  return request<any>("/users/me/customer-profile", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
   });
 }
 
@@ -213,6 +271,24 @@ export function fetchMapState(token: string, bookingId: string) {
     headers: {
       Authorization: `Bearer ${token}`
     }
+  });
+}
+
+export function fetchTripMessages(token: string, bookingId: string) {
+  return request<TripMessage[]>(`/bookings/${bookingId}/messages`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export function sendTripMessage(token: string, bookingId: string, body: string) {
+  return request<TripMessage>(`/bookings/${bookingId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ body })
   });
 }
 

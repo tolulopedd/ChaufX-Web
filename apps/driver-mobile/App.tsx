@@ -28,6 +28,7 @@ import {
   fetchDriverProfile,
   fetchMapState,
   fetchNotifications,
+  fetchTripMessages,
   login,
   markTripEnRoute,
   markNotificationRead,
@@ -35,9 +36,11 @@ import {
   rejectBooking,
   requestPasswordReset,
   registerPushDevice,
+  sendTripMessage,
   setAvailability,
   shareLocation,
   startTrip,
+  type TripMessage,
   updateDriverLocation
 } from "./src/lib/api";
 
@@ -63,10 +66,36 @@ type NotificationSubscription = { remove(): void };
 const logo = require("./assets/chaufx-mark.png");
 const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
 const pushNotificationsEnabled = process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS === "true";
+const CANADA_MAP_FALLBACK: Coordinate = { latitude: 56.1304, longitude: -106.3468 };
+const driverQuickTripMessages = ["I'll be with you shortly.", "I'm on the way.", "I'm outside now."];
 let notificationsModulePromise: Promise<NotificationsModule | null> | null = null;
 
 function isSessionExpiredError(error: unknown) {
   return error instanceof Error && error.message === "Session expired. Please sign in again.";
+}
+
+function isDriverSession(session: any) {
+  return String(session?.user?.role ?? "").toLowerCase() === "driver";
+}
+
+function canUseTripMessages(booking: any) {
+  return ["accepted", "enroute", "active", "completed"].includes(String(booking?.status).toLowerCase());
+}
+
+function formatDriverError(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  if (error.message === "Access denied") {
+    return "Your driver account does not have permission for that action yet.";
+  }
+
+  return error.message || fallback;
+}
+
+function getDriverLocationHelpMessage() {
+  return "Turn on location for ChaufX Driver.";
 }
 
 async function registerForPushNotificationsAsync(appVariant: "customer" | "driver") {
@@ -224,6 +253,20 @@ function formatDriverRatingCount(profile: any) {
   return `${total} review${total === 1 ? "" : "s"}`;
 }
 
+function formatDriverCurrency(amount?: number | null) {
+  const numericAmount = Number(amount ?? 0);
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 2
+  }).format(Number.isFinite(numericAmount) ? numericAmount : 0);
+}
+
+function hasDriverEarnings(profile: any) {
+  const completedPaidTripsCount = Number(profile?.settlementSummary?.completedPaidTripsCount ?? 0);
+  return Number.isFinite(completedPaidTripsCount) && completedPaidTripsCount > 0;
+}
+
 function formatHours(expectedDurationMinutes?: number) {
   if (!expectedDurationMinutes || expectedDurationMinutes <= 0) {
     return "Not set";
@@ -233,8 +276,36 @@ function formatHours(expectedDurationMinutes?: number) {
   return `${hours} hour${hours === 1 ? "" : "s"}`;
 }
 
-function isPaymentRecorded(status?: string) {
-  return String(status ?? "").toLowerCase() === "recorded";
+function formatMemberSince(value?: string) {
+  if (!value) return "Not available";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+
+  return new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric" }).format(date);
+}
+
+function CustomerBookingProfile({ booking }: { booking: any }) {
+  const customer = booking?.customerSummary;
+
+  if (!customer) return null;
+
+  return (
+    <View style={styles.customerBookingProfile}>
+      <View style={styles.customerBookingProfileHeading}>
+        <Text style={styles.customerBookingProfileName}>{customer.displayName ?? "Customer"}</Text>
+        {customer.verified ? <Text style={styles.customerVerifiedBadge}>VERIFIED CUSTOMER ✓</Text> : null}
+      </View>
+      <Text style={styles.customerBookingProfileMeta}>Member since: {formatMemberSince(customer.memberSince)}</Text>
+      <Text style={styles.customerBookingProfileMeta}>Completed bookings: {Number(customer.completedBookings ?? 0)}</Text>
+      <Text style={styles.customerBookingProfileMeta}>Service: Personal Driver</Text>
+      <Text style={styles.customerBookingProfileMeta}>Vehicle: {customer.vehicle ?? "Not provided"}</Text>
+    </View>
+  );
+}
+
+function isPaymentReady(booking: any) {
+  return booking?.paymentReady === true;
 }
 
 function getDriverLiveRefreshMs(status?: string) {
@@ -317,7 +388,7 @@ function distanceInKm(left: Coordinate, right: Coordinate) {
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function buildCameraProps(points: Coordinate[], fallback: Coordinate) {
+function buildCameraProps(points: Coordinate[], fallback: Coordinate, defaultZoomLevel = 12.6) {
   if (points.length >= 2) {
     const latitudes = points.map((point) => point.latitude);
     const longitudes = points.map((point) => point.longitude);
@@ -337,7 +408,7 @@ function buildCameraProps(points: Coordinate[], fallback: Coordinate) {
   }
 
   return {
-    zoomLevel: 12.6,
+    zoomLevel: defaultZoomLevel,
     centerCoordinate: [fallback.longitude, fallback.latitude] as [number, number],
     animationMode: "easeTo" as const,
     animationDuration: 600
@@ -378,20 +449,24 @@ async function fetchRouteGeometry(start: Coordinate, end: Coordinate) {
 function DriverMap({
   driverCoordinate,
   pickupCoordinate,
-  destinationCoordinate
+  destinationCoordinate,
+  interactive = false,
+  onPress
 }: {
   driverCoordinate: Coordinate | null;
   pickupCoordinate: Coordinate | null;
   destinationCoordinate: Coordinate | null;
+  interactive?: boolean;
+  onPress?: () => void;
 }) {
   const shouldUseDriverForCamera =
     Boolean(driverCoordinate) &&
     (!pickupCoordinate || distanceInKm(driverCoordinate as Coordinate, pickupCoordinate) <= 75);
-  const center =
+  const primaryPoint =
     (shouldUseDriverForCamera ? driverCoordinate : null) ??
     pickupCoordinate ??
-    destinationCoordinate ??
-    { latitude: 49.8951, longitude: -97.1384 };
+    destinationCoordinate;
+  const center = primaryPoint ?? CANADA_MAP_FALLBACK;
   const cameraPoints = [
     shouldUseDriverForCamera ? driverCoordinate : null,
     pickupCoordinate,
@@ -399,7 +474,8 @@ function DriverMap({
   ].filter(Boolean) as Coordinate[];
   const cameraProps = buildCameraProps(
     cameraPoints,
-    center
+    center,
+    primaryPoint ? 12.6 : 3.2
   );
   const [routeShape, setRouteShape] = useState<any>(null);
 
@@ -446,10 +522,11 @@ function DriverMap({
       compassEnabled={false}
       logoEnabled={false}
       attributionEnabled={false}
-      scrollEnabled={false}
-      zoomEnabled={false}
-      rotateEnabled={false}
-      pitchEnabled={false}
+      scrollEnabled={interactive}
+      zoomEnabled={interactive}
+      rotateEnabled={interactive}
+      pitchEnabled={interactive}
+      onPress={onPress}
     >
       <Mapbox.Camera {...cameraProps} />
       {driverCoordinate ? <Mapbox.LocationPuck visible puckBearingEnabled puckBearing="heading" /> : null}
@@ -488,9 +565,14 @@ export default function App() {
   const [passwordResetVisible, setPasswordResetVisible] = useState(false);
   const [passwordResetEmail, setPasswordResetEmail] = useState("");
   const [passwordResetBusy, setPasswordResetBusy] = useState(false);
+  const [fullScreenMapVisible, setFullScreenMapVisible] = useState(false);
+  const [androidLocationHint, setAndroidLocationHint] = useState("");
   const [driverProfile, setDriverProfile] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [mapState, setMapState] = useState<any>(null);
+  const [tripMessages, setTripMessages] = useState<TripMessage[]>([]);
+  const [tripMessageDraft, setTripMessageDraft] = useState("");
+  const [tripMessagesBusy, setTripMessagesBusy] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [localDriverUpdates, setLocalDriverUpdates] = useState<AppNotification[]>([]);
   const [driverCoordinate, setDriverCoordinate] = useState<Coordinate | null>(null);
@@ -672,8 +754,19 @@ export default function App() {
       return null;
     }
 
+    if (Platform.OS === "android") {
+      await Location.enableNetworkProviderAsync().catch(() => undefined);
+    }
+
+    const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+    if (!servicesEnabled) {
+      setAndroidLocationHint(getDriverLocationHelpMessage());
+      return null;
+    }
+
     const permission = await Location.getForegroundPermissionsAsync();
     if (permission.status !== "granted") {
+      setAndroidLocationHint(getDriverLocationHelpMessage());
       return null;
     }
 
@@ -690,6 +783,7 @@ export default function App() {
       longitude: current.coords.longitude
     };
 
+    setAndroidLocationHint("");
     setDriverCoordinate(coords);
 
     if (options?.publish) {
@@ -804,9 +898,22 @@ export default function App() {
     let cancelled = false;
 
     async function startTracking() {
+      if (Platform.OS === "android") {
+        await Location.enableNetworkProviderAsync().catch(() => undefined);
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!servicesEnabled) {
+        setGpsStatus("paused");
+        setAndroidLocationHint(getDriverLocationHelpMessage());
+        setStatus("Turn on location to go online.");
+        return;
+      }
+
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") {
         setGpsStatus("paused");
+        setAndroidLocationHint(getDriverLocationHelpMessage());
         setStatus("Location access is needed to route the nearest requests and share active trip progress.");
         return;
       }
@@ -821,6 +928,7 @@ export default function App() {
           longitude: current.coords.longitude
         };
         setDriverCoordinate(coords);
+        setAndroidLocationHint("");
         await publishDriverLocation(current.coords);
       }
 
@@ -839,6 +947,7 @@ export default function App() {
             latitude: update.coords.latitude,
             longitude: update.coords.longitude
           });
+          setAndroidLocationHint("");
           await publishDriverLocation(update.coords);
         }
       );
@@ -856,6 +965,39 @@ export default function App() {
       locationWatchRef.current = null;
     };
   }, [currentTrip?.id, driverProfile?.availabilityStatus, liveRefreshMs, session?.accessToken]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !currentTrip || !canUseTripMessages(currentTrip)) {
+      setTripMessages([]);
+      setTripMessageDraft("");
+      return;
+    }
+
+    let active = true;
+
+    const loadMessages = async () => {
+      try {
+        const items = await fetchTripMessages(session.accessToken, currentTrip.id);
+        if (active) {
+          setTripMessages(items);
+        }
+      } catch {
+        if (active) {
+          setTripMessages([]);
+        }
+      }
+    };
+
+    void loadMessages();
+    const interval = setInterval(() => {
+      void loadMessages();
+    }, 10000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [currentTrip?.id, currentTrip?.status, session?.accessToken]);
 
   useEffect(() => {
     if (!session?.accessToken || (!driverProfile?.availabilityStatus && !currentTrip)) {
@@ -897,22 +1039,35 @@ export default function App() {
       }
     } catch (error) {
       setGpsStatus("paused");
-      setStatus(error instanceof Error ? error.message : "Unable to sync your live GPS.");
+      setStatus(formatDriverError(error, "Unable to sync your live GPS."));
     }
   }
 
   async function primeCurrentLocation() {
     try {
+      if (Platform.OS === "android") {
+        await Location.enableNetworkProviderAsync().catch(() => undefined);
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!servicesEnabled) {
+        setAndroidLocationHint(getDriverLocationHelpMessage());
+        return;
+      }
+
       const permission = await Location.getForegroundPermissionsAsync();
       if (permission.status === "undetermined") {
         const requested = await Location.requestForegroundPermissionsAsync();
         if (requested.status !== "granted") {
+          setAndroidLocationHint(getDriverLocationHelpMessage());
           return;
         }
       } else if (permission.status !== "granted") {
+        setAndroidLocationHint(getDriverLocationHelpMessage());
         return;
       }
 
+      setAndroidLocationHint("");
       await syncDriverLocationSnapshot({ publish: false });
     } catch {
       // Keep the map available even before GPS is granted.
@@ -971,7 +1126,7 @@ export default function App() {
         }
         return;
       }
-      setStatus(error instanceof Error ? error.message : "Unable to refresh the driver app.");
+      setStatus(formatDriverError(error, "Unable to refresh the driver app."));
     } finally {
       setRefreshing(false);
     }
@@ -983,6 +1138,11 @@ export default function App() {
     setStatus("");
     try {
       const nextSession = await login(loginEmail.trim(), loginPassword);
+      if (!isDriverSession(nextSession)) {
+        setSession(null);
+        setStatus("Use a driver account to sign in.");
+        return;
+      }
       setSession(nextSession);
       setStatus("");
     } catch (error) {
@@ -1025,7 +1185,7 @@ export default function App() {
       setDriverProfile((current: any) => ({ ...(current ?? {}), ...updated }));
       setStatus(value ? "You are online and ready for nearby requests." : "You are offline.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to update availability.");
+      setStatus(formatDriverError(error, "Unable to update availability."));
     } finally {
       setBusy(false);
     }
@@ -1055,7 +1215,7 @@ export default function App() {
       }
       await refreshDashboard();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to update this request.");
+      setStatus(formatDriverError(error, "Unable to update this request."));
     } finally {
       setBusy(false);
     }
@@ -1066,7 +1226,7 @@ export default function App() {
       return;
     }
 
-    if (action === "start" && !isPaymentRecorded(currentTrip.payment?.status)) {
+    if (action === "start" && !isPaymentReady(currentTrip)) {
       const message = "Customer payment must be completed before you can start the trip.";
       setStatus(message);
       Alert.alert("Payment required", message);
@@ -1090,7 +1250,7 @@ export default function App() {
       }
       await refreshDashboard();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to update trip status.";
+      const message = formatDriverError(error, "Unable to update trip status.");
       setStatus(message);
       Alert.alert("Trip action unavailable", message);
     } finally {
@@ -1112,9 +1272,32 @@ export default function App() {
       });
       await refreshDashboard();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to notify the customer right now.");
+      setStatus(formatDriverError(error, "Unable to notify the customer right now."));
     } finally {
       setArrivalNoticeBookingId(null);
+    }
+  }
+
+  async function handleSendTripMessage(bodyOverride?: string) {
+    if (!session?.accessToken || !currentTrip || !canUseTripMessages(currentTrip)) {
+      return;
+    }
+
+    const body = (bodyOverride ?? tripMessageDraft).trim();
+    if (!body) {
+      return;
+    }
+
+    setTripMessagesBusy(true);
+    try {
+      const message = await sendTripMessage(session.accessToken, currentTrip.id, body);
+      setTripMessages((current) => [...current, message]);
+      setTripMessageDraft("");
+      setStatus("Message sent.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to send message.");
+    } finally {
+      setTripMessagesBusy(false);
     }
   }
 
@@ -1160,7 +1343,7 @@ export default function App() {
     }
 
     if (normalizedStatus === "accepted") {
-      if (!isPaymentRecorded(currentTrip.payment?.status)) {
+      if (!isPaymentReady(currentTrip)) {
         return {
           label: "Awaiting payment",
           action: null as "enroute" | "start" | "end" | null,
@@ -1178,7 +1361,7 @@ export default function App() {
     }
 
     if (normalizedStatus === "enroute") {
-      if (!isPaymentRecorded(currentTrip.payment?.status)) {
+      if (!isPaymentReady(currentTrip)) {
         return {
           label: "Awaiting payment",
           action: null as "enroute" | "start" | "end" | null,
@@ -1315,43 +1498,30 @@ export default function App() {
             </View>
           </View>
         </Modal>
-        {Platform.OS === "android" ? (
-          <View
-            style={[
-              styles.androidLoginShell,
+        <KeyboardAvoidingView
+          style={styles.keyboardWrap}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        >
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={[
+              styles.contentGrow,
+              styles.loginWrap,
+              Platform.OS === "android" ? styles.androidLoginShell : null,
               {
-                paddingTop: Math.max(insets.top, 18) + 12,
-                paddingBottom: Math.max(insets.bottom, 20) + 20
+                paddingTop: Math.max(insets.top, 18) + (Platform.OS === "android" ? 12 : 20),
+                paddingBottom: Math.max(insets.bottom, 24) + (Platform.OS === "android" ? 56 : 140)
               }
             ]}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            scrollEnabled
           >
             {loginPanel}
-          </View>
-        ) : (
-          <KeyboardAvoidingView
-            style={styles.keyboardWrap}
-            behavior="padding"
-            keyboardVerticalOffset={8}
-          >
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={[
-                styles.contentGrow,
-                styles.loginWrap,
-                {
-                  paddingTop: Math.max(insets.top, 18) + 20,
-                  paddingBottom: Math.max(insets.bottom, 24) + 140
-                }
-              ]}
-              keyboardShouldPersistTaps="always"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-              scrollEnabled
-            >
-              {loginPanel}
-            </ScrollView>
-          </KeyboardAvoidingView>
-        )}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -1371,6 +1541,7 @@ export default function App() {
                   </Text>
                   <Text style={styles.requestTypeChip}>{formatRequestType(activeIncomingRequest.requestType)}</Text>
                 </View>
+                <CustomerBookingProfile booking={activeIncomingRequest} />
                 <Text style={styles.promptTitle}>{activeIncomingRequest.pickupLocation}</Text>
                 <Text style={styles.bookingCopy}>{activeIncomingRequest.destinationLocation}</Text>
                 <Text style={styles.bookingMeta}>{formatDateTime(activeIncomingRequest.scheduledStartAt)}</Text>
@@ -1382,9 +1553,6 @@ export default function App() {
                     This request overlaps with a trip you already accepted, so you cannot take both.
                   </Text>
                 ) : null}
-                <Text style={styles.promptCopy}>
-                  A nearby trip is waiting. Accept now to reserve it or decline so another driver can take it.
-                </Text>
                 <View style={styles.actionRow}>
                   <Pressable
                     style={[
@@ -1442,10 +1610,54 @@ export default function App() {
           </View>
         </View>
       </Modal>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 10) + 12, paddingBottom: 34 }]}>
+      <Modal
+        visible={fullScreenMapVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setFullScreenMapVisible(false)}
+      >
+        <View style={styles.fullMapScreen}>
+          <DriverMap
+            driverCoordinate={driverCoordinate}
+            pickupCoordinate={pickupCoordinate}
+            destinationCoordinate={destinationCoordinate}
+            interactive
+          />
+          <View style={styles.mapLegend}>
+            <View style={styles.mapLegendPill}>
+              <View style={[styles.legendPulse, { backgroundColor: "#EA580C" }]} />
+              <Text style={styles.mapLegendText}>Pickup</Text>
+            </View>
+            <View style={styles.mapLegendPill}>
+              <View style={[styles.legendDiamond, { backgroundColor: "#2563EB" }]} />
+              <Text style={styles.mapLegendText}>Dropoff</Text>
+            </View>
+          </View>
+          <Pressable style={[styles.fullMapClose, { top: Math.max(insets.top, 16) + 10 }]} onPress={() => setFullScreenMapVisible(false)}>
+            <Text style={styles.fullMapCloseText}>Close</Text>
+          </Pressable>
+        </View>
+      </Modal>
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: Math.max(insets.top, 10) + 12,
+            paddingBottom: Math.max(insets.bottom, 24) + 80
+          }
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.headerLabel}>Driver app</Text>
             <Text style={styles.headerTitle}>
               <Text style={styles.headerGreeting}>Hello </Text>
               <Text style={styles.headerTitleName}>{driverProfile?.user?.fullName?.split(" ")[0] ?? "driver"}</Text>
@@ -1464,6 +1676,9 @@ export default function App() {
               destinationCoordinate={destinationCoordinate}
             />
           </View>
+          <Pressable style={styles.mapTapLayer} onPress={() => setFullScreenMapVisible(true)}>
+            <Text style={styles.mapTapText}>Tap for full map</Text>
+          </Pressable>
           <View style={styles.mapLegend}>
             <View style={styles.mapLegendPill}>
               <View style={[styles.legendPulse, { backgroundColor: "#EA580C" }]} />
@@ -1486,16 +1701,12 @@ export default function App() {
               </Text>
             </View>
             <Text style={styles.tripStageLabel}>{getOperationLabel(currentTrip.status)}</Text>
+            <CustomerBookingProfile booking={currentTrip} />
             <Text style={styles.bookingTitle}>{currentTrip.pickupLocation}</Text>
             <Text style={styles.bookingCopy}>{currentTrip.destinationLocation}</Text>
             <Text style={styles.bookingMeta}>{formatDateTime(currentTrip.scheduledStartAt)}</Text>
             <Text style={styles.bookingMeta}>{formatStartsIn(currentTrip.scheduledStartAt)}</Text>
             <Text style={styles.bookingMeta}>Duration · {formatHours(currentTrip.expectedDurationMinutes)}</Text>
-            {currentTripAction?.helper ? (
-              <View style={styles.infoStrip}>
-                <Text style={styles.infoStripText}>{currentTripAction.helper}</Text>
-              </View>
-            ) : null}
             <View style={styles.actionRow}>
               <Pressable
                 style={[
@@ -1523,6 +1734,59 @@ export default function App() {
                 </Text>
               </Pressable>
             ) : null}
+            {canUseTripMessages(currentTrip) ? (
+              <View style={styles.chatCard}>
+                <Text style={styles.chatTitle}>Messages</Text>
+                <View style={styles.chatQuickReplyRow}>
+                  {driverQuickTripMessages.map((message) => (
+                    <Pressable
+                      key={message}
+                      style={[styles.chatQuickReplyChip, tripMessagesBusy && styles.buttonDisabled]}
+                      disabled={tripMessagesBusy}
+                      onPress={() => handleSendTripMessage(message)}
+                    >
+                      <Text style={styles.chatQuickReplyText}>{message}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.chatThread}>
+                  {tripMessages.length ? (
+                    tripMessages.map((message) => {
+                      const mine = message.sender.id === session.user.id;
+                      return (
+                        <View
+                          key={message.id}
+                          style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}
+                        >
+                          <Text style={styles.chatSenderLabel}>{mine ? "You" : message.sender.fullName}</Text>
+                          <Text style={styles.chatBubbleText}>{message.body}</Text>
+                          <Text style={styles.chatMetaText}>{formatDateTime(message.createdAt)}</Text>
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={styles.emptyText}>No messages.</Text>
+                  )}
+                </View>
+                <View style={styles.chatComposerRow}>
+                  <TextInput
+                    style={styles.chatInput}
+                    value={tripMessageDraft}
+                    onChangeText={setTripMessageDraft}
+                    placeholder="Send a message"
+                    placeholderTextColor="#94A3B8"
+                    editable={!tripMessagesBusy}
+                  />
+                  <Pressable
+                    style={[styles.chatSendButton, (tripMessagesBusy || !tripMessageDraft.trim()) && styles.buttonDisabled]}
+                    disabled={tripMessagesBusy || !tripMessageDraft.trim()}
+                    onPress={() => handleSendTripMessage()}
+                  >
+                    <Text style={styles.chatSendButtonText}>{tripMessagesBusy ? "..." : "Send"}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -1543,9 +1807,12 @@ export default function App() {
               <View style={styles.availabilityRow}>
                 <View style={styles.availabilityCopy}>
                   <Text style={styles.panelTitle}>Availability</Text>
-                  <Text style={styles.subtleText}>
-                    {driverProfile?.availabilityStatus ? "You are available for nearby routed requests." : "Go online to receive requests."}
-                  </Text>
+                  <Text style={styles.subtleText}>{driverProfile?.availabilityStatus ? "Online" : "Offline"}</Text>
+                  {Platform.OS === "android" && androidLocationHint ? (
+                    <View style={styles.locationHintCard}>
+                      <Text style={styles.locationHintTitle}>Turn on location</Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={styles.availabilityToggleWrap}>
                   <Switch
@@ -1574,7 +1841,7 @@ export default function App() {
                   </View>
                 ))
               ) : (
-                <Text style={styles.emptyText}>Trip and request updates will appear here as your day moves.</Text>
+                <Text style={styles.emptyText}>No updates.</Text>
               )}
             </View>
 
@@ -1587,6 +1854,7 @@ export default function App() {
                       <Text style={styles.requestTypeChip}>{formatRequestType(booking.requestType)}</Text>
                       <Text style={styles.bookingStatus}>{formatStartsIn(booking.scheduledStartAt)}</Text>
                     </View>
+                    <CustomerBookingProfile booking={booking} />
                     <Text style={styles.bookingTitle}>{booking.pickupLocation}</Text>
                     <Text style={styles.bookingCopy}>{booking.destinationLocation}</Text>
                     <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartAt)}</Text>
@@ -1605,6 +1873,7 @@ export default function App() {
                       <Text style={[styles.bookingStatus, { color: toneColor(booking.status) }]}>{String(booking.status).toUpperCase()}</Text>
                       <Text style={styles.requestTypeChip}>{formatRequestType(booking.requestType)}</Text>
                     </View>
+                    <CustomerBookingProfile booking={booking} />
                     <Text style={styles.bookingTitle}>{booking.pickupLocation}</Text>
                     <Text style={styles.bookingCopy}>{booking.destinationLocation}</Text>
                     <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartAt)}</Text>
@@ -1613,7 +1882,7 @@ export default function App() {
                   </View>
                 ))
               ) : (
-                <Text style={styles.emptyText}>No future scheduled trips yet.</Text>
+                <Text style={styles.emptyText}>No scheduled trips.</Text>
               )}
             </View>
 
@@ -1626,6 +1895,7 @@ export default function App() {
                       <Text style={[styles.bookingStatus, { color: toneColor(booking.status) }]}>{String(booking.status).toUpperCase()}</Text>
                       <Text style={styles.requestTypeChip}>{formatRequestType(booking.requestType)}</Text>
                     </View>
+                    <CustomerBookingProfile booking={booking} />
                     <Text style={styles.bookingTitle}>{booking.pickupLocation}</Text>
                     <Text style={styles.bookingCopy}>{booking.destinationLocation}</Text>
                     <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartAt)}</Text>
@@ -1657,43 +1927,92 @@ export default function App() {
                   </View>
                 ))
               ) : (
-                <Text style={styles.emptyText}>No nearby requests are waiting for you right now.</Text>
+                <Text style={styles.emptyText}>No requests.</Text>
               )}
             </View>
           </>
         ) : null}
 
         {tab === "account" ? (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Account</Text>
-            <View style={styles.accountRow}>
-              <Text style={styles.accountLabel}>Driver</Text>
-              <Text style={styles.accountValue}>{driverProfile?.user?.fullName ?? session.user.fullName}</Text>
+          <>
+            <View style={styles.panel}>
+              <Text style={styles.panelTitle}>Earnings</Text>
+              {hasDriverEarnings(driverProfile) ? (
+                <>
+                  <View style={styles.earningsGrid}>
+                    <View style={styles.earningsCard}>
+                      <Text style={styles.earningsLabel}>This week</Text>
+                      <Text style={styles.earningsValue}>
+                        {formatDriverCurrency(driverProfile?.settlementSummary?.currentWeekDriverShareAmount)}
+                      </Text>
+                      <Text style={styles.earningsDetail}>
+                        {Number(driverProfile?.settlementSummary?.currentWeekTripCount ?? 0)} completed paid trip(s)
+                      </Text>
+                    </View>
+                    <View style={styles.earningsCard}>
+                      <Text style={styles.earningsLabel}>Lifetime</Text>
+                      <Text style={styles.earningsValue}>
+                        {formatDriverCurrency(driverProfile?.settlementSummary?.lifetimeDriverShareAmount)}
+                      </Text>
+                      <Text style={styles.earningsDetail}>
+                        {Number(driverProfile?.settlementSummary?.completedPaidTripsCount ?? 0)} completed paid trip(s)
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.accountRow}>
+                    <Text style={styles.accountLabel}>Outstanding payout</Text>
+                    <Text style={styles.accountValue}>
+                      {formatDriverCurrency(driverProfile?.settlementSummary?.outstandingDriverShareAmount)}
+                    </Text>
+                  </View>
+                  <View style={styles.accountRow}>
+                    <Text style={styles.accountLabel}>Paid out</Text>
+                    <Text style={styles.accountValue}>
+                      {formatDriverCurrency(driverProfile?.settlementSummary?.paidOutDriverShareAmount)}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.earningsEmptyCard}>
+                  <Text style={styles.earningsEmptyText}>
+                    No earnings.
+                  </Text>
+                </View>
+              )}
             </View>
-            <View style={styles.accountRow}>
-              <Text style={styles.accountLabel}>Email</Text>
-              <Text style={styles.accountValue}>{driverProfile?.user?.email ?? session.user.email}</Text>
+
+            <View style={styles.panel}>
+              <Text style={styles.panelTitle}>Account</Text>
+              <View style={styles.accountRow}>
+                <Text style={styles.accountLabel}>Driver</Text>
+                <Text style={styles.accountValue}>{driverProfile?.user?.fullName ?? session.user.fullName}</Text>
+              </View>
+              <View style={styles.accountRow}>
+                <Text style={styles.accountLabel}>Email</Text>
+                <Text style={styles.accountValue}>{driverProfile?.user?.email ?? session.user.email}</Text>
+              </View>
+              <View style={styles.accountRow}>
+                <Text style={styles.accountLabel}>Province</Text>
+                <Text style={styles.accountValue}>{getDriverProvince(driverProfile)}</Text>
+              </View>
+              <View style={styles.accountRow}>
+                <Text style={styles.accountLabel}>Average rating</Text>
+                <Text style={styles.accountValue}>{formatDriverAverageRating(driverProfile)}</Text>
+              </View>
+              <View style={styles.accountRow}>
+                <Text style={styles.accountLabel}>Reviews</Text>
+                <Text style={styles.accountValue}>{formatDriverRatingCount(driverProfile)}</Text>
+              </View>
+              <Pressable style={styles.secondaryButton} onPress={logout}>
+                <Text style={styles.secondaryButtonText}>Log out</Text>
+              </Pressable>
             </View>
-            <View style={styles.accountRow}>
-              <Text style={styles.accountLabel}>Province</Text>
-              <Text style={styles.accountValue}>{getDriverProvince(driverProfile)}</Text>
-            </View>
-            <View style={styles.accountRow}>
-              <Text style={styles.accountLabel}>Average rating</Text>
-              <Text style={styles.accountValue}>{formatDriverAverageRating(driverProfile)}</Text>
-            </View>
-            <View style={styles.accountRow}>
-              <Text style={styles.accountLabel}>Reviews</Text>
-              <Text style={styles.accountValue}>{formatDriverRatingCount(driverProfile)}</Text>
-            </View>
-            <Pressable style={styles.secondaryButton} onPress={logout}>
-              <Text style={styles.secondaryButtonText}>Log out</Text>
-            </Pressable>
-          </View>
+          </>
         ) : null}
 
         {status ? <Text style={styles.statusText}>{status}</Text> : null}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -1951,6 +2270,43 @@ const styles = StyleSheet.create({
     borderColor: "#FFFFFF",
     transform: [{ rotate: "45deg" }]
   },
+  mapTapLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+    justifyContent: "flex-end",
+    alignItems: "flex-start",
+    padding: 14
+  },
+  mapTapText: {
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.78)",
+    color: "#E2E8F0",
+    fontSize: 11,
+    fontWeight: "800",
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  fullMapScreen: {
+    flex: 1,
+    backgroundColor: "#081930"
+  },
+  fullMapClose: {
+    position: "absolute",
+    right: 16,
+    zIndex: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 18,
+    paddingVertical: 10
+  },
+  fullMapCloseText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800"
+  },
   tabRow: {
     flexDirection: "row",
     gap: 10
@@ -1987,6 +2343,26 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginTop: 6,
     lineHeight: 20
+  },
+  locationHintCard: {
+    marginTop: 12,
+    borderRadius: 18,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    padding: 14,
+    gap: 6
+  },
+  locationHintTitle: {
+    color: "#9A3412",
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20
+  },
+  locationHintText: {
+    color: "#9A3412",
+    fontSize: 13,
+    lineHeight: 19
   },
   helperText: {
     color: "#64748B",
@@ -2080,6 +2456,137 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 6
   },
+  customerBookingProfile: {
+    borderRadius: 16,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 12,
+    gap: 4,
+    marginTop: 4
+  },
+  customerBookingProfileHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 2
+  },
+  customerBookingProfileName: {
+    color: "#0F172A",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  customerVerifiedBadge: {
+    borderRadius: 999,
+    backgroundColor: "#DCFCE7",
+    color: "#15803D",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.65,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 4
+  },
+  customerBookingProfileMeta: {
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 18
+  },
+  chatCard: {
+    marginTop: 10,
+    borderRadius: 18,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    padding: 12,
+    gap: 10
+  },
+  chatTitle: {
+    color: "#0F172A",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  chatQuickReplyRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  chatQuickReplyChip: {
+    borderRadius: 999,
+    backgroundColor: "#E0E7FF",
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  chatQuickReplyText: {
+    color: "#4338CA",
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  chatThread: {
+    gap: 8
+  },
+  chatBubble: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4
+  },
+  chatBubbleMine: {
+    backgroundColor: "#DBEAFE",
+    alignSelf: "flex-end",
+    maxWidth: "88%"
+  },
+  chatBubbleOther: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignSelf: "flex-start",
+    maxWidth: "88%"
+  },
+  chatSenderLabel: {
+    color: "#64748B",
+    fontSize: 11,
+    fontWeight: "700"
+  },
+  chatBubbleText: {
+    color: "#0F172A",
+    fontSize: 14,
+    lineHeight: 20
+  },
+  chatMetaText: {
+    color: "#64748B",
+    fontSize: 11
+  },
+  chatComposerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  chatInput: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: "#0F172A",
+    fontSize: 14
+  },
+  chatSendButton: {
+    borderRadius: 16,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  chatSendButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700"
+  },
   tagRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2147,6 +2654,46 @@ const styles = StyleSheet.create({
   emptyText: {
     color: "#64748B",
     fontSize: 15
+  },
+  earningsGrid: {
+    gap: 12
+  },
+  earningsCard: {
+    borderRadius: 18,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    padding: 14,
+    gap: 6
+  },
+  earningsLabel: {
+    color: "#64748B",
+    fontSize: 12,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    fontWeight: "700"
+  },
+  earningsValue: {
+    color: "#0F172A",
+    fontSize: 28,
+    fontWeight: "800"
+  },
+  earningsDetail: {
+    color: "#64748B",
+    fontSize: 13,
+    lineHeight: 19
+  },
+  earningsEmptyCard: {
+    borderRadius: 18,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    padding: 14
+  },
+  earningsEmptyText: {
+    color: "#64748B",
+    fontSize: 14,
+    lineHeight: 21
   },
   accountRow: {
     borderRadius: 18,

@@ -21,7 +21,7 @@
         "NSLocationWhenInUseUsageDescription": "ChaufX uses your location to confirm your pickup point when you choose your current location."
       },
       "bundleIdentifier": "ca.chaufx.customer",
-      "buildNumber": "14"
+      "buildNumber": "19"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,7 +35,7 @@
         "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "ca.chaufx.customer",
-      "versionCode": 17
+      "versionCode": 24
     },
     "assetBundlePatterns": [
       "**/*"

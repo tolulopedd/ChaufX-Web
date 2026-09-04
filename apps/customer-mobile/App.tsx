@@ -19,6 +19,9 @@ import { StatusBar } from "expo-status-bar";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import Mapbox from "@rnmapbox/maps";
 import * as Location from "expo-location";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as WebBrowser from "expo-web-browser";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatDateTime } from "@chaufx/ui";
 import {
@@ -28,11 +31,17 @@ import {
   fetchBookingEstimate,
   fetchBookings,
   fetchMapState,
+  fetchTripMessages,
   fetchProfile,
   login,
+  requestCustomerVerificationEmail,
   requestPasswordReset,
+  sendTripMessage,
+  submitRating,
   syncBookingPayment,
-  type Session
+  updateCustomerProfile,
+  type Session,
+  type TripMessage
 } from "./src/lib/api";
 
 type Tab = "book" | "trips" | "account";
@@ -40,6 +49,7 @@ type ScheduleMode = "now" | "later";
 type BookingRequestType = "NOW" | "LATER";
 type Coordinate = { latitude: number; longitude: number };
 type SearchField = "pickup" | "destination";
+type AuthMode = "login" | "signup";
 type WheelOption = {
   value: number;
   label: string;
@@ -50,12 +60,121 @@ type PlaceSuggestion = {
   latitude: number;
   longitude: number;
 };
+type RoutingDriverCard = {
+  id: string;
+  title: string;
+  detail: string;
+  distanceKm: number | null;
+  status: string;
+};
+type GovernmentPhotoId = {
+  fileName: string;
+  fileUrl: string;
+  mimeType?: string;
+};
+
+const customerQuickTripMessages = ["I'm ready at pickup.", "I'll be outside shortly.", "Please message when you arrive."];
 
 const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
 const logo = require("./assets/chaufx-mark.png");
 const paymentCompleteUrl = "ca.chaufx.customer://payment-complete";
 const paymentCancelledUrl = "ca.chaufx.customer://payment-cancelled";
 const TRIP_HISTORY_DAYS = 7;
+const CANADA_MAP_FALLBACK: Coordinate = { latitude: 56.1304, longitude: -106.3468 };
+
+function isCustomerSession(session: any) {
+  return String(session?.user?.role ?? "").toLowerCase() === "customer";
+}
+
+function canUseTripMessages(booking: any) {
+  if (!booking?.assignedDriverId) {
+    return false;
+  }
+
+  return ["accepted", "enroute", "active", "completed"].includes(String(booking.status).toLowerCase());
+}
+
+function canRateBooking(booking: any) {
+  const bookingStatus = String(booking?.status ?? "").toLowerCase();
+  const paymentStatus = String(booking?.payment?.status ?? "").toLowerCase();
+  return bookingStatus === "completed" && paymentStatus === "recorded" && Boolean(booking?.assignedDriverId);
+}
+
+function getBookingRatingScore(booking: any) {
+  const score = Number(booking?.rating?.score ?? 0);
+  return Number.isFinite(score) && score > 0 ? score : 0;
+}
+
+function isVerifiedCustomerProfile(profile: any) {
+  const customerProfile = profile?.customerProfile;
+  const primaryVehicle = Array.isArray(customerProfile?.vehicles)
+    ? customerProfile.vehicles.find((vehicle: any) => vehicle.isPrimary) ?? customerProfile.vehicles[0]
+    : null;
+
+  return Boolean(
+    customerProfile?.dateOfBirth &&
+      customerProfile?.primaryAddress &&
+      customerProfile?.emergencyContactName &&
+      customerProfile?.emergencyContactPhone &&
+      customerProfile?.identityDocument &&
+      primaryVehicle?.make &&
+      primaryVehicle?.model &&
+      primaryVehicle?.plateNumber &&
+      primaryVehicle?.registrationProvince &&
+      customerProfile?.vehicleComplianceConfirmedAt &&
+      customerProfile?.termsAcceptedAt &&
+      customerProfile?.privacyPolicyAcceptedAt &&
+      customerProfile?.identityVerificationConsentedAt &&
+      customerProfile?.vehicleAuthorityConfirmedAt
+  );
+}
+
+function isCustomerReadyToBook(profile: any) {
+  const customerProfile = profile?.customerProfile;
+  const primaryVehicle = Array.isArray(customerProfile?.vehicles)
+    ? customerProfile.vehicles.find((vehicle: any) => vehicle.isPrimary) ?? customerProfile.vehicles[0]
+    : null;
+
+  return Boolean(
+    profile?.emailVerifiedAt &&
+      normalizeCanadianPhoneNumber(profile?.phone ?? "") &&
+      customerProfile?.identityDocument &&
+      primaryVehicle?.make &&
+      primaryVehicle?.model &&
+      primaryVehicle?.plateNumber &&
+      primaryVehicle?.registrationProvince
+  );
+}
+
+function formatCanadianPhoneNumber(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const localNumber = digits.startsWith("1") ? digits.slice(1, 11) : digits.slice(0, 10);
+
+  if (!localNumber) {
+    return "";
+  }
+  if (localNumber.length <= 3) {
+    return `+1 (${localNumber}`;
+  }
+  if (localNumber.length <= 6) {
+    return `+1 (${localNumber.slice(0, 3)}) ${localNumber.slice(3)}`;
+  }
+  return `+1 (${localNumber.slice(0, 3)}) ${localNumber.slice(3, 6)}-${localNumber.slice(6)}`;
+}
+
+function normalizeCanadianPhoneNumber(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const localNumber = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+
+  return /^[2-9]\d{2}[2-9]\d{6}$/.test(localNumber) ? `+1${localNumber}` : null;
+}
+
+function formatLocalDate(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function getDefaultScheduledTime() {
   const date = new Date(Date.now() + 90 * 60 * 1000);
@@ -153,6 +272,71 @@ async function searchPlaces(query: string, currentLocation: Coordinate | null) {
     }));
 }
 
+function formatCoordinateLabel(coords: Coordinate) {
+  return `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+}
+
+async function reverseGeocodeCoordinate(coords: Coordinate) {
+  try {
+    const reverse = await Location.reverseGeocodeAsync(coords);
+    const first = reverse[0];
+
+    if (first) {
+      const label = [first.name, first.street, first.city, first.region].filter(Boolean).join(", ");
+      if (label.trim()) {
+        return label;
+      }
+    }
+  } catch {
+    // Fall through to Mapbox or coordinate fallback below.
+  }
+
+  if (mapboxToken) {
+    try {
+      const params = new URLSearchParams({
+        access_token: mapboxToken,
+        limit: "1",
+        language: "en"
+      });
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${coords.longitude},${coords.latitude}.json?${params.toString()}`
+      );
+      const payload = await response.json();
+      const feature = Array.isArray(payload?.features) ? payload.features[0] : null;
+      const label = String(feature?.place_name ?? feature?.text ?? "").trim();
+
+      if (label) {
+        return label;
+      }
+    } catch {
+      // Keep the coordinate fallback below.
+    }
+  }
+
+  return null;
+}
+
+async function resolveCurrentCoordinate() {
+  const current =
+    (await Location.getLastKnownPositionAsync({
+      maxAge: 5 * 60 * 1000,
+      requiredAccuracy: 250
+    }).catch(() => null)) ??
+    (await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+      mayShowUserSettingsDialog: true
+    }).catch(() => null));
+
+  if (!current) {
+    return null;
+  }
+
+  return {
+    latitude: current.coords.latitude,
+    longitude: current.coords.longitude
+  } satisfies Coordinate;
+}
+
 async function fetchRouteGeometry(start: Coordinate, end: Coordinate) {
   if (!mapboxToken) {
     return null;
@@ -207,6 +391,43 @@ function isVisibleTripHistoryItem(booking: any) {
   return Date.now() - historyDate.getTime() <= TRIP_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 }
 
+function formatDispatchStatus(value?: string) {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "accepted") {
+    return "Driver reviewing now";
+  }
+  if (normalized === "declined") {
+    return "Driver passed";
+  }
+  if (normalized === "expired") {
+    return "Timed out";
+  }
+  return "Routing now";
+}
+
+function buildRoutingDriverCards(booking: any): RoutingDriverCard[] {
+  const dispatches = Array.isArray(booking?.dispatches) ? booking.dispatches : [];
+
+  return dispatches
+    .filter((dispatch: any) => ["pending", "accepted"].includes(String(dispatch.status ?? "").toLowerCase()))
+    .slice(0, 5)
+    .map((dispatch: any, index: number) => {
+      const distance = Number(dispatch.distanceKm);
+      const formattedDistance =
+        Number.isFinite(distance) && distance > 0
+          ? `${distance < 10 ? distance.toFixed(1) : distance.toFixed(0)} km away`
+          : "Near your pickup";
+
+      return {
+        id: String(dispatch.id ?? `${booking.id}-dispatch-${index}`),
+        title: index === 0 ? "Closest driver first" : `Nearby driver ${index + 1}`,
+        detail: formattedDistance,
+        distanceKm: Number.isFinite(distance) ? distance : null,
+        status: formatDispatchStatus(dispatch.status)
+      };
+    });
+}
+
 function Marker({ color, variant }: { color: string; variant: "current" | "pickup" | "destination" }) {
   const pulse = useRef(new Animated.Value(1)).current;
 
@@ -255,7 +476,7 @@ function Marker({ color, variant }: { color: string; variant: "current" | "picku
   return <View style={[styles.markerCurrent, { backgroundColor: color }]} />;
 }
 
-function buildCameraProps(points: Coordinate[], fallback: Coordinate) {
+function buildCameraProps(points: Coordinate[], fallback: Coordinate, defaultZoomLevel = 12.8) {
   if (points.length >= 2) {
     const latitudes = points.map((point) => point.latitude);
     const longitudes = points.map((point) => point.longitude);
@@ -275,7 +496,7 @@ function buildCameraProps(points: Coordinate[], fallback: Coordinate) {
   }
 
   return {
-    zoomLevel: 12.8,
+    zoomLevel: defaultZoomLevel,
     centerCoordinate: [fallback.longitude, fallback.latitude] as [number, number],
     animationMode: "easeTo" as const,
     animationDuration: 600
@@ -286,18 +507,27 @@ function MapSurface({
   currentLocation,
   pickup,
   destination,
+  preferCanadaFallback = false,
   interactive = false,
   onPress
 }: {
   currentLocation: Coordinate | null;
   pickup: Coordinate | null;
   destination: Coordinate | null;
+  preferCanadaFallback?: boolean;
   interactive?: boolean;
   onPress?: () => void;
 }) {
-  const center = pickup ?? currentLocation ?? { latitude: 49.8951, longitude: -97.1384 };
-  const cameraPoints = destination ? [pickup ?? currentLocation ?? center, destination] : [center];
-  const cameraProps = buildCameraProps(cameraPoints, center);
+  const primaryPoint = pickup ?? (preferCanadaFallback ? null : currentLocation);
+  const center = primaryPoint ?? CANADA_MAP_FALLBACK;
+  const cameraPoints = [primaryPoint, destination].filter(Boolean) as Coordinate[];
+  const cameraZoomLevel = pickup ? 15.1 : primaryPoint || destination ? 13.1 : 3.2;
+  const cameraProps = buildCameraProps(cameraPoints, center, cameraZoomLevel);
+  const cameraKey = [
+    pickup ? `pickup:${pickup.latitude.toFixed(6)},${pickup.longitude.toFixed(6)}` : "pickup:none",
+    destination ? `destination:${destination.latitude.toFixed(6)},${destination.longitude.toFixed(6)}` : "destination:none",
+    preferCanadaFallback ? "fallback:canada" : "fallback:current"
+  ].join("|");
   const [routeShape, setRouteShape] = useState<any>(null);
 
   useEffect(() => {
@@ -349,8 +579,8 @@ function MapSurface({
       pitchEnabled={interactive}
       onPress={onPress}
     >
-      <Mapbox.Camera {...cameraProps} />
-      {currentLocation ? (
+      <Mapbox.Camera key={cameraKey} {...cameraProps} />
+      {currentLocation && !pickup ? (
         <Mapbox.PointAnnotation id="current-location" coordinate={[currentLocation.longitude, currentLocation.latitude]}>
           <Marker color="#22C55E" variant="current" />
         </Mapbox.PointAnnotation>
@@ -385,14 +615,46 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState("");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [signupFullName, setSignupFullName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
   const [passwordResetBusy, setPasswordResetBusy] = useState(false);
+  const [customerProfileSaving, setCustomerProfileSaving] = useState(false);
+  const [showDateOfBirthPicker, setShowDateOfBirthPicker] = useState(false);
+  const [governmentPhotoId, setGovernmentPhotoId] = useState<GovernmentPhotoId | null>(null);
+  const [customerAccountForm, setCustomerAccountForm] = useState({
+    phone: "",
+    dateOfBirth: "",
+    primaryAddress: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    vehicleMake: "",
+    vehicleModel: "",
+    licencePlate: "",
+    registrationProvince: "",
+    vehicleComplianceConfirmed: false,
+    termsAccepted: false,
+    privacyPolicyAccepted: false,
+    identityVerificationConsented: false,
+    vehicleAuthorityConfirmed: false
+  });
   const [profile, setProfile] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [mapState, setMapState] = useState<any>(null);
   const [estimate, setEstimate] = useState<any>(null);
+  const [tripMessages, setTripMessages] = useState<TripMessage[]>([]);
+  const [tripMessageDraft, setTripMessageDraft] = useState("");
+  const [tripMessagesBusy, setTripMessagesBusy] = useState(false);
+  const [ratingBookingId, setRatingBookingId] = useState<string | null>(null);
+  const [ratingScore, setRatingScore] = useState(5);
+  const [ratingBusy, setRatingBusy] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
   const [currentLocation, setCurrentLocation] = useState<Coordinate | null>(null);
   const [activeSearchField, setActiveSearchField] = useState<SearchField | null>(null);
@@ -401,7 +663,12 @@ export default function App() {
   const [showScheduleDatePicker, setShowScheduleDatePicker] = useState(false);
   const [showScheduleTimePicker, setShowScheduleTimePicker] = useState(false);
   const [fullScreenMapVisible, setFullScreenMapVisible] = useState(false);
+  const [activeRoutingCardIndex, setActiveRoutingCardIndex] = useState(0);
+  const [androidLocationFallbackActive, setAndroidLocationFallbackActive] = useState(false);
+  const [pickupLockedVisible, setPickupLockedVisible] = useState(false);
+  const pickupLockedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pickupManuallyEditedRef = useRef(false);
+  const authScrollRef = useRef<ScrollView>(null);
   const [form, setForm] = useState({
     pickupLocation: "",
     pickupLat: "",
@@ -417,11 +684,31 @@ export default function App() {
     zoneCode: "WPG-CENTRAL"
   });
   const isAndroidLoginMode = Platform.OS === "android";
+  const isVerifiedCustomer = isVerifiedCustomerProfile(profile);
+  const isCustomerReadyForBooking = isCustomerReadyToBook(profile);
+
+  function keepAuthActionVisible() {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    setTimeout(() => {
+      authScrollRef.current?.scrollToEnd({ animated: true });
+    }, 180);
+  }
 
   useEffect(() => {
     if (mapboxToken) {
       Mapbox.setAccessToken(mapboxToken);
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pickupLockedTimeoutRef.current) {
+        clearTimeout(pickupLockedTimeoutRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -431,6 +718,31 @@ export default function App() {
 
     refreshDashboard();
   }, [session]);
+
+  useEffect(() => {
+    const customerProfile = profile?.customerProfile;
+    if (!profile) {
+      return;
+    }
+
+    const primaryVehicle = Array.isArray(customerProfile?.vehicles) ? customerProfile.vehicles[0] : null;
+    setCustomerAccountForm({
+      phone: formatCanadianPhoneNumber(profile.phone ?? ""),
+      dateOfBirth: customerProfile?.dateOfBirth ? String(customerProfile.dateOfBirth).slice(0, 10) : "",
+      primaryAddress: customerProfile?.primaryAddress ?? "",
+      emergencyContactName: customerProfile?.emergencyContactName ?? "",
+      emergencyContactPhone: formatCanadianPhoneNumber(customerProfile?.emergencyContactPhone ?? ""),
+      vehicleMake: primaryVehicle?.make ?? "",
+      vehicleModel: primaryVehicle?.model ?? "",
+      licencePlate: primaryVehicle?.plateNumber ?? "",
+      registrationProvince: primaryVehicle?.registrationProvince ?? customerProfile?.vehicleRegistrationProvince ?? "",
+      vehicleComplianceConfirmed: Boolean(customerProfile?.vehicleComplianceConfirmedAt),
+      termsAccepted: Boolean(customerProfile?.termsAcceptedAt),
+      privacyPolicyAccepted: Boolean(customerProfile?.privacyPolicyAcceptedAt),
+      identityVerificationConsented: Boolean(customerProfile?.identityVerificationConsentedAt),
+      vehicleAuthorityConfirmed: Boolean(customerProfile?.vehicleAuthorityConfirmedAt)
+    });
+  }, [profile]);
 
   useEffect(() => {
     if (!session?.accessToken) {
@@ -454,12 +766,12 @@ export default function App() {
       if (bookingId && url.includes("payment-complete")) {
         try {
           await syncBookingPayment(session.accessToken, decodeURIComponent(bookingId));
-          setStatus("Payment recorded. We are now matching your booking with nearby drivers.");
+          setStatus("Payment recorded.");
         } catch {
-          setStatus("Payment received. Refreshing your booking status.");
+          setStatus("Payment received.");
         }
       } else if (url.includes("payment-cancelled")) {
-        setStatus("Payment was cancelled. You can try again from Trips.");
+        setStatus("Payment cancelled.");
       }
 
       setTab("trips");
@@ -479,17 +791,35 @@ export default function App() {
       return;
     }
 
+    const estimatePickupLat = Number(form.pickupLat);
+    const estimatePickupLng = Number(form.pickupLng);
+
     const scheduledStartAt =
       scheduleMode === "now" ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : toIso(form.scheduledDate, form.scheduledTime);
 
     fetchBookingEstimate(session.accessToken, {
       scheduledStartAt,
       expectedDurationMinutes: clampDurationHours(Number(form.durationHours) || 0) * 60,
-      zoneCode: form.zoneCode
+      zoneCode: form.zoneCode,
+      pickupLocation: form.pickupLocation.trim() || undefined,
+      destinationLocation: form.destinationLocation.trim() || undefined,
+      pickupLat: Number.isFinite(estimatePickupLat) ? estimatePickupLat : undefined,
+      pickupLng: Number.isFinite(estimatePickupLng) ? estimatePickupLng : undefined
     })
       .then(setEstimate)
       .catch(() => setEstimate(null));
-  }, [form.durationHours, form.scheduledDate, form.scheduledTime, form.zoneCode, scheduleMode, session]);
+  }, [
+    form.destinationLocation,
+    form.durationHours,
+    form.pickupLat,
+    form.pickupLng,
+    form.pickupLocation,
+    form.scheduledDate,
+    form.scheduledTime,
+    form.zoneCode,
+    scheduleMode,
+    session
+  ]);
 
   useEffect(() => {
     if (!activeSearchField) {
@@ -530,6 +860,48 @@ export default function App() {
       clearTimeout(timeout);
     };
   }, [activeSearchField, currentLocation, form.destinationLocation, form.pickupLocation]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !pickupManuallyEditedRef.current) {
+      return;
+    }
+
+    const query = form.pickupLocation.trim();
+    if (query.length < 3) {
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      searchPlaces(query, currentLocation)
+        .then((results) => {
+          if (cancelled || !results.length) {
+            return;
+          }
+
+          const bestMatch = results[0];
+          setForm((currentForm) => {
+            if (currentForm.pickupLocation.trim() !== query) {
+              return currentForm;
+            }
+
+            return {
+              ...currentForm,
+              pickupLat: String(bestMatch.latitude),
+              pickupLng: String(bestMatch.longitude)
+            };
+          });
+          setAndroidLocationFallbackActive(false);
+          triggerPickupLocked();
+        })
+        .catch(() => undefined);
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [currentLocation, form.pickupLocation, session?.accessToken]);
 
   const pickupCoordinate = useMemo<Coordinate | null>(() => {
     const latitude = Number(form.pickupLat);
@@ -600,6 +972,104 @@ export default function App() {
       String(booking.status).toLowerCase() === "awaiting_payment" &&
       String(booking.payment?.status ?? "").toLowerCase() !== "recorded"
   );
+  const routingDriverCards = useMemo(
+    () =>
+      activeBooking &&
+      activeBooking.requestType === "NOW" &&
+      String(activeBooking.status).toLowerCase() === "pending"
+        ? buildRoutingDriverCards(activeBooking)
+        : [],
+    [activeBooking]
+  );
+
+  useEffect(() => {
+    setActiveRoutingCardIndex(0);
+  }, [routingDriverCards.length, activeBooking?.id]);
+
+  useEffect(() => {
+    if (routingDriverCards.length <= 1) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setActiveRoutingCardIndex((current) => (current + 1) % routingDriverCards.length);
+    }, 1800);
+
+    return () => clearInterval(interval);
+  }, [routingDriverCards.length]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !activeBooking) {
+      return;
+    }
+
+    const activeStatus = String(activeBooking.status).toLowerCase();
+    if (!["awaiting_payment", "pending", "accepted"].includes(activeStatus)) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      refreshDashboard().catch(() => undefined);
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [activeBooking?.id, activeBooking?.status, session?.accessToken]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !activeBooking || !canUseTripMessages(activeBooking)) {
+      setTripMessages([]);
+      setTripMessageDraft("");
+      return;
+    }
+
+    let active = true;
+
+    const loadMessages = async () => {
+      try {
+        const items = await fetchTripMessages(session.accessToken, activeBooking.id);
+        if (active) {
+          setTripMessages(items);
+        }
+      } catch {
+        if (active) {
+          setTripMessages([]);
+        }
+      }
+    };
+
+    void loadMessages();
+    const interval = setInterval(() => {
+      void loadMessages();
+    }, 10000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [activeBooking?.id, activeBooking?.status, session?.accessToken]);
+
+  async function handleSendTripMessage(bodyOverride?: string) {
+    if (!session?.accessToken || !activeBooking || !canUseTripMessages(activeBooking)) {
+      return;
+    }
+
+    const body = (bodyOverride ?? tripMessageDraft).trim();
+    if (!body) {
+      return;
+    }
+
+    setTripMessagesBusy(true);
+    try {
+      const message = await sendTripMessage(session.accessToken, activeBooking.id, body);
+      setTripMessages((current) => [...current, message]);
+      setTripMessageDraft("");
+      setStatus("Message sent.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to send message.");
+    } finally {
+      setTripMessagesBusy(false);
+    }
+  }
 
   async function refreshDashboard() {
     if (!session?.accessToken) {
@@ -633,41 +1103,62 @@ export default function App() {
 
   async function primeCurrentLocation() {
     try {
-      const permission = await Location.getForegroundPermissionsAsync();
-      if (permission.status === "undetermined") {
-        const requested = await Location.requestForegroundPermissionsAsync();
-        if (requested.status !== "granted") {
-          return;
+      if (Platform.OS === "android") {
+        await Location.enableNetworkProviderAsync().catch(() => undefined);
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!servicesEnabled) {
+        setStatus("Turn on device location services to autofill your pickup address.");
+        return;
+      }
+
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        setStatus("Location permission is needed to autofill your pickup address.");
+        return;
+      }
+
+      const coords = await resolveCurrentCoordinate();
+      if (!coords) {
+        setStatus("Location not available.");
+        if (Platform.OS === "android") {
+          setAndroidLocationFallbackActive(true);
         }
-      } else if (permission.status !== "granted") {
         return;
       }
-
-      const current =
-        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null)) ??
-        (await Location.getLastKnownPositionAsync());
-
-      if (!current) {
-        return;
-      }
-
-      const coords = {
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude
-      };
       setCurrentLocation(coords);
 
-      const reverse = await Location.reverseGeocodeAsync(coords);
-      const label = reverse[0]
-        ? [
-            reverse[0].name,
-            reverse[0].street,
-            reverse[0].city,
-            reverse[0].region
-          ]
-            .filter(Boolean)
-            .join(", ")
-        : `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+      setForm((currentForm) =>
+        pickupManuallyEditedRef.current
+          ? currentForm
+          : {
+              ...currentForm,
+              pickupLat: String(coords.latitude),
+              pickupLng: String(coords.longitude)
+            }
+      );
+
+      if (pickupManuallyEditedRef.current) {
+        return;
+      }
+
+      const label = await reverseGeocodeCoordinate(coords);
+      if (!label) {
+        if (Platform.OS === "android") {
+          setAndroidLocationFallbackActive(true);
+          setStatus("Pickup address not detected.");
+          return;
+        }
+
+        setForm((currentForm) => ({
+          ...currentForm,
+          pickupLocation: formatCoordinateLabel(coords),
+          pickupLat: String(coords.latitude),
+          pickupLng: String(coords.longitude)
+        }));
+        return;
+      }
 
       setForm((currentForm) =>
         pickupManuallyEditedRef.current
@@ -679,8 +1170,12 @@ export default function App() {
               pickupLng: String(coords.longitude)
             }
       );
+      setAndroidLocationFallbackActive(false);
     } catch {
-      // Keep the map usable even if device location isn't available yet.
+      setStatus("Location not available.");
+      if (Platform.OS === "android") {
+        setAndroidLocationFallbackActive(true);
+      }
     }
   }
 
@@ -689,6 +1184,11 @@ export default function App() {
     setStatus("");
     try {
       const nextSession = await login(loginEmail.trim(), loginPassword);
+      if (!isCustomerSession(nextSession)) {
+        setSession(null);
+        setStatus("Use a customer account to sign in.");
+        return;
+      }
       setSession(nextSession);
       setStatus("");
     } catch (error) {
@@ -714,6 +1214,57 @@ export default function App() {
       setStatus(error instanceof Error ? error.message : "Unable to request a password reset.");
     } finally {
       setPasswordResetBusy(false);
+    }
+  }
+
+  async function handleRegister() {
+    const fullName = signupFullName.trim();
+    const email = signupEmail.trim();
+
+    if (!fullName || !email || !signupPassword) {
+      setStatus("Enter your legal name, email, and password.");
+      return;
+    }
+
+    if (signupPassword.length < 8) {
+      setStatus("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (signupPassword !== signupConfirmPassword) {
+      setStatus("Passwords do not match.");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("");
+
+    try {
+      const result = await requestCustomerVerificationEmail({
+        fullName,
+        email,
+        password: signupPassword
+      });
+      setLoginEmail(email);
+      setLoginPassword("");
+      setSignupFullName("");
+      setSignupEmail(email);
+      setSignupPassword("");
+      setSignupConfirmPassword("");
+      setShowSignupPassword(false);
+      setShowSignupConfirmPassword(false);
+      setAuthMode("login");
+      setStatus(result.message || "A verification link has been sent to your email address.");
+      Alert.alert(
+        "Verify your email",
+        result.previewUrl
+          ? `A verification link has been sent to your email address.\n\nPreview: ${result.previewUrl}`
+          : "A verification link has been sent to your email address. Please verify your email, then sign in."
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to create your account.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -826,8 +1377,20 @@ export default function App() {
         throw new Error("Stripe checkout is not available for this booking yet.");
       }
 
-      setStatus("Opening secure Stripe checkout.");
-      await Linking.openURL(checkout.checkoutUrl);
+      const result = await WebBrowser.openAuthSessionAsync(checkout.checkoutUrl, paymentCompleteUrl);
+
+      if (result.type === "success") {
+        try {
+          await syncBookingPayment(session.accessToken, bookingId);
+          setStatus("Payment recorded.");
+        } catch {
+          setStatus("Payment received.");
+        }
+        setTab("trips");
+        await refreshDashboard();
+      } else if (result.type === "cancel" || result.type === "dismiss") {
+        setStatus("Payment cancelled.");
+      }
     } finally {
       if (manageBusy) {
         setBusy(false);
@@ -837,6 +1400,12 @@ export default function App() {
 
   async function submitBooking(nextMode: ScheduleMode) {
     if (!session?.accessToken) {
+      return;
+    }
+
+    if (!isCustomerReadyForBooking) {
+      setTab("account");
+      setStatus("LET'S GET YOU VERIFIED");
       return;
     }
 
@@ -925,6 +1494,117 @@ export default function App() {
     }
   }
 
+  async function handlePickGovernmentPhotoId() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"],
+        copyToCacheDirectory: true
+      });
+
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+
+      const file = result.assets[0];
+      if (file.size && file.size > 7 * 1024 * 1024) {
+        setStatus("Government photo ID files must be 7 MB or smaller.");
+        return;
+      }
+
+      const mimeType = file.mimeType ?? "application/octet-stream";
+      const base64 = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+
+      setGovernmentPhotoId({
+        fileName: file.name,
+        fileUrl: `data:${mimeType};base64,${base64}`,
+        mimeType
+      });
+      setStatus("Government photo ID selected. Save account details to upload it.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to select government photo ID.");
+    }
+  }
+
+  async function handleSaveCustomerProfile() {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    const emergencyPhone = customerAccountForm.emergencyContactPhone.trim()
+      ? normalizeCanadianPhoneNumber(customerAccountForm.emergencyContactPhone)
+      : null;
+    if (customerAccountForm.emergencyContactPhone.trim() && !emergencyPhone) {
+      setStatus("Enter a valid Canadian emergency phone number.");
+      return;
+    }
+
+    const phone = normalizeCanadianPhoneNumber(customerAccountForm.phone);
+    if (!phone) {
+      setStatus("Enter a valid Canadian mobile phone number.");
+      return;
+    }
+
+    const vehicleValues = [
+      customerAccountForm.vehicleMake.trim(),
+      customerAccountForm.vehicleModel.trim(),
+      customerAccountForm.licencePlate.trim(),
+      customerAccountForm.registrationProvince.trim()
+    ];
+    const hasVehicleDetails = vehicleValues.some(Boolean);
+    const hasCompleteVehicleDetails = vehicleValues.every(Boolean);
+    if (hasVehicleDetails && !hasCompleteVehicleDetails) {
+      setStatus("Complete the vehicle make, model, licence plate, and province of registration.");
+      return;
+    }
+
+    setCustomerProfileSaving(true);
+    try {
+      const updatedCustomerProfile = await updateCustomerProfile(session.accessToken, {
+        phone,
+        ...(customerAccountForm.dateOfBirth ? { dateOfBirth: customerAccountForm.dateOfBirth } : {}),
+        ...(customerAccountForm.primaryAddress.trim() ? { primaryAddress: customerAccountForm.primaryAddress.trim() } : {}),
+        ...(customerAccountForm.emergencyContactName.trim()
+          ? { emergencyContactName: customerAccountForm.emergencyContactName.trim() }
+          : {}),
+        ...(emergencyPhone ? { emergencyContactPhone: emergencyPhone } : {}),
+        ...(hasCompleteVehicleDetails
+          ? {
+              vehicle: {
+                make: customerAccountForm.vehicleMake.trim(),
+                model: customerAccountForm.vehicleModel.trim(),
+                plateNumber: customerAccountForm.licencePlate.trim(),
+                registrationProvince: customerAccountForm.registrationProvince.trim()
+              }
+            }
+          : {}),
+        vehicleComplianceConfirmed: customerAccountForm.vehicleComplianceConfirmed,
+        termsAccepted: customerAccountForm.termsAccepted,
+        privacyPolicyAccepted: customerAccountForm.privacyPolicyAccepted,
+        identityVerificationConsented: customerAccountForm.identityVerificationConsented,
+        vehicleAuthorityConfirmed: customerAccountForm.vehicleAuthorityConfirmed,
+        ...(governmentPhotoId ? { governmentPhotoId } : {})
+      });
+
+      setProfile((currentProfile: any) =>
+        currentProfile
+          ? {
+              ...currentProfile,
+              phone,
+              customerProfile: updatedCustomerProfile
+            }
+          : currentProfile
+      );
+      setGovernmentPhotoId(null);
+      setStatus("Account details saved.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to save account details.");
+    } finally {
+      setCustomerProfileSaving(false);
+    }
+  }
+
   function logout() {
     setSession(null);
     setProfile(null);
@@ -952,6 +1632,24 @@ export default function App() {
     }
   }
 
+  async function handleSubmitRating(bookingId: string) {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    setRatingBusy(true);
+    try {
+      await submitRating(session.accessToken, bookingId, ratingScore, "");
+      setStatus("Rating submitted.");
+      setRatingBookingId(null);
+      await refreshDashboard();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to submit rating.");
+    } finally {
+      setRatingBusy(false);
+    }
+  }
+
   function renderPaymentBlock(booking: any) {
     const bookingStatus = String(booking.status ?? "").toLowerCase();
     const paymentStatus = String(booking.payment?.status ?? "").toLowerCase();
@@ -973,11 +1671,6 @@ export default function App() {
           </Text>
         </View>
         <Text style={styles.paymentAmount}>${amount.toFixed(2)} CAD</Text>
-        <Text style={styles.paymentCopy}>
-          {isPaid
-            ? "Your payment has been recorded for this booking."
-            : "Complete payment securely before driver matching begins."}
-        </Text>
         {needsPayment ? (
           <View style={styles.paymentActions}>
             <Pressable
@@ -1000,6 +1693,111 @@ export default function App() {
     );
   }
 
+  function renderRatingBlock(booking: any) {
+    if (!canRateBooking(booking)) {
+      return null;
+    }
+
+    const existingRating = getBookingRatingScore(booking);
+    if (existingRating > 0) {
+      return (
+        <View style={styles.ratingBlock}>
+          <Text style={styles.ratingLabel}>Driver rating</Text>
+          <Text style={styles.ratingSummary}>Rated {existingRating}/5</Text>
+        </View>
+      );
+    }
+
+    const isOpen = ratingBookingId === booking.id;
+
+    return (
+      <View style={styles.ratingBlock}>
+        {!isOpen ? (
+          <Pressable
+            style={[styles.ratingActionButton, ratingBusy && styles.buttonDisabled]}
+            disabled={ratingBusy}
+            onPress={() => {
+              setRatingBookingId(booking.id);
+              setRatingScore(5);
+            }}
+          >
+            <Text style={styles.ratingActionButtonText}>Rate driver</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.ratingComposer}>
+            <Text style={styles.ratingLabel}>Rate driver</Text>
+            <View style={styles.ratingStarsRow}>
+              {[1, 2, 3, 4, 5].map((value) => {
+                const active = value <= ratingScore;
+                return (
+                  <Pressable
+                    key={value}
+                    style={styles.ratingStarButton}
+                    disabled={ratingBusy}
+                    onPress={() => setRatingScore(value)}
+                  >
+                    <Text style={[styles.ratingStarText, active && styles.ratingStarTextActive]}>{active ? "★" : "☆"}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.ratingActionsRow}>
+              <Pressable
+                style={[styles.ratingSubmitButton, ratingBusy && styles.buttonDisabled]}
+                disabled={ratingBusy}
+                onPress={() => handleSubmitRating(booking.id)}
+              >
+                <Text style={styles.ratingSubmitButtonText}>{ratingBusy ? "Submitting..." : "Submit rating"}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.ratingCancelButton, ratingBusy && styles.buttonDisabled]}
+                disabled={ratingBusy}
+                onPress={() => setRatingBookingId(null)}
+              >
+                <Text style={styles.ratingCancelButtonText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  function renderRoutingStatus(booking: any) {
+    if (booking.requestType !== "NOW" || String(booking.status).toLowerCase() !== "pending") {
+      return null;
+    }
+
+    const currentCard = routingDriverCards[activeRoutingCardIndex] ?? null;
+
+    return (
+      <View style={styles.routingPanel}>
+        <Text style={styles.routingTitle}>Matching drivers</Text>
+        {currentCard ? (
+          <View style={styles.routingCard}>
+            <Text style={styles.routingCardTitle}>{currentCard.title}</Text>
+            <Text style={styles.routingCardDistance}>{currentCard.detail}</Text>
+            <Text style={styles.routingCardStatus}>{currentCard.status}</Text>
+          </View>
+        ) : (
+          <View style={styles.routingCard}>
+            <Text style={styles.routingCardTitle}>Matching</Text>
+          </View>
+        )}
+        {routingDriverCards.length > 1 ? (
+          <View style={styles.routingDots}>
+            {routingDriverCards.map((item, index) => (
+              <View
+                key={item.id}
+                style={[styles.routingDot, index === activeRoutingCardIndex && styles.routingDotActive]}
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
   function renderMapLegend() {
     return (
       <View style={styles.mapLegend}>
@@ -1015,9 +1813,22 @@ export default function App() {
     );
   }
 
+  function triggerPickupLocked() {
+    setPickupLockedVisible(true);
+    if (pickupLockedTimeoutRef.current) {
+      clearTimeout(pickupLockedTimeoutRef.current);
+    }
+    pickupLockedTimeoutRef.current = setTimeout(() => {
+      setPickupLockedVisible(false);
+      pickupLockedTimeoutRef.current = null;
+    }, 2200);
+  }
+
   function applySuggestion(field: SearchField, suggestion: PlaceSuggestion) {
     if (field === "pickup") {
       pickupManuallyEditedRef.current = true;
+      setAndroidLocationFallbackActive(false);
+      triggerPickupLocked();
     }
 
     setForm((currentForm) =>
@@ -1053,43 +1864,125 @@ export default function App() {
           style={[styles.loginLogo, isAndroidLoginMode ? styles.loginLogoCompact : null]}
           resizeMode="contain"
         />
-        <Text style={[styles.loginEyebrow, isAndroidLoginMode ? styles.loginEyebrowCompact : null]}>
-          CHAUFX CANADA
+        <Text style={[styles.loginTitle, isAndroidLoginMode ? styles.loginTitleCompact : null]}>
+          {authMode === "login" ? "Welcome" : "Create account"}
         </Text>
-        <Text style={[styles.loginTitle, isAndroidLoginMode ? styles.loginTitleCompact : null]}>Welcome</Text>
 
         <View style={[styles.loginCard, isAndroidLoginMode ? styles.loginCardCompact : null]}>
-          <TextInput
-            placeholder="Enter your email"
-            placeholderTextColor="#94A3B8"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            style={styles.input}
-            value={loginEmail}
-            onChangeText={setLoginEmail}
-            showSoftInputOnFocus
-          />
-          <View style={styles.passwordFieldRow}>
-            <TextInput
-              placeholder="Enter your password"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!showLoginPassword}
-              style={styles.passwordInput}
-              value={loginPassword}
-              onChangeText={setLoginPassword}
-              showSoftInputOnFocus
-            />
-            <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
-              <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
-            </Pressable>
-          </View>
-          <Pressable disabled={passwordResetBusy} onPress={handleRequestPasswordReset}>
-            <Text style={styles.linkText}>{passwordResetBusy ? "Sending reset link..." : "Forgot password?"}</Text>
-          </Pressable>
-          <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
-            {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
-          </Pressable>
+          {authMode === "signup" ? (
+            <>
+              <TextInput
+                placeholder="Full legal name"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="words"
+                style={styles.input}
+                value={signupFullName}
+                onChangeText={setSignupFullName}
+                onFocus={keepAuthActionVisible}
+                showSoftInputOnFocus
+              />
+              <TextInput
+                placeholder="Enter your email"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                style={styles.input}
+                value={signupEmail}
+                onChangeText={setSignupEmail}
+                onFocus={keepAuthActionVisible}
+                showSoftInputOnFocus
+              />
+              <View style={styles.passwordFieldRow}>
+                <TextInput
+                  placeholder="Create a password"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry={!showSignupPassword}
+                  style={styles.passwordInput}
+                  value={signupPassword}
+                  onChangeText={setSignupPassword}
+                  onFocus={keepAuthActionVisible}
+                  showSoftInputOnFocus
+                />
+                <Pressable onPress={() => setShowSignupPassword((current) => !current)}>
+                  <Text style={styles.passwordToggleText}>{showSignupPassword ? "Hide" : "Show"}</Text>
+                </Pressable>
+              </View>
+              <View style={styles.passwordFieldRow}>
+                <TextInput
+                  placeholder="Confirm password"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry={!showSignupConfirmPassword}
+                  style={styles.passwordInput}
+                  value={signupConfirmPassword}
+                  onChangeText={setSignupConfirmPassword}
+                  onFocus={keepAuthActionVisible}
+                  showSoftInputOnFocus
+                />
+                <Pressable onPress={() => setShowSignupConfirmPassword((current) => !current)}>
+                  <Text style={styles.passwordToggleText}>{showSignupConfirmPassword ? "Hide" : "Show"}</Text>
+                </Pressable>
+              </View>
+              <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleRegister}>
+                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Create account</Text>}
+              </Pressable>
+              <Pressable
+                style={styles.authModeLink}
+                onPress={() => {
+                  setAuthMode("login");
+                  setStatus("");
+                }}
+              >
+                <Text style={styles.linkText}>Already have an account? Sign in</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <TextInput
+                placeholder="Enter your email"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                style={styles.input}
+                value={loginEmail}
+                onChangeText={setLoginEmail}
+                onFocus={keepAuthActionVisible}
+                showSoftInputOnFocus
+              />
+              <View style={styles.passwordFieldRow}>
+                <TextInput
+                  placeholder="Enter your password"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry={!showLoginPassword}
+                  style={styles.passwordInput}
+                  value={loginPassword}
+                  onChangeText={setLoginPassword}
+                  onFocus={keepAuthActionVisible}
+                  showSoftInputOnFocus
+                />
+                <Pressable onPress={() => setShowLoginPassword((current) => !current)}>
+                  <Text style={styles.passwordToggleText}>{showLoginPassword ? "Hide" : "Show"}</Text>
+                </Pressable>
+              </View>
+              <Pressable disabled={passwordResetBusy} onPress={handleRequestPasswordReset}>
+                <Text style={styles.linkText}>{passwordResetBusy ? "Sending reset link..." : "Forgot password?"}</Text>
+              </Pressable>
+              <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={handleLogin}>
+                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
+              </Pressable>
+              <Pressable
+                style={styles.authModeLink}
+                onPress={() => {
+                  setAuthMode("signup");
+                  setStatus("");
+                  setSignupEmail(loginEmail.trim());
+                }}
+              >
+                <Text style={styles.linkText}>Need account? Create one</Text>
+              </Pressable>
+            </>
+          )}
         </View>
 
         {status ? <Text style={styles.statusText}>{status}</Text> : null}
@@ -1099,43 +1992,31 @@ export default function App() {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
-        {Platform.OS === "android" ? (
-          <View
-            style={[
-              styles.androidLoginShell,
+        <KeyboardAvoidingView
+          style={styles.keyboardWrap}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        >
+          <ScrollView
+            ref={authScrollRef}
+            style={styles.scroll}
+            contentContainerStyle={[
+              styles.contentGrow,
+              styles.loginWrap,
+              Platform.OS === "android" ? styles.androidLoginShell : null,
               {
-                paddingTop: Math.max(insets.top, 18) + 12,
-                paddingBottom: Math.max(insets.bottom, 20) + 20
+                paddingTop: Math.max(insets.top, 18) + (Platform.OS === "android" ? 12 : 20),
+                paddingBottom: Math.max(insets.bottom, 24) + (Platform.OS === "android" ? 56 : 140)
               }
             ]}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            scrollEnabled
           >
             {loginPanel}
-          </View>
-        ) : (
-          <KeyboardAvoidingView
-            style={styles.keyboardWrap}
-            behavior="padding"
-            keyboardVerticalOffset={8}
-          >
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={[
-                styles.contentGrow,
-                styles.loginWrap,
-                {
-                  paddingTop: Math.max(insets.top, 18) + 20,
-                  paddingBottom: Math.max(insets.bottom, 24) + 140
-                }
-              ]}
-              keyboardShouldPersistTaps="always"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-              scrollEnabled
-            >
-              {loginPanel}
-            </ScrollView>
-          </KeyboardAvoidingView>
-        )}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -1160,8 +2041,10 @@ export default function App() {
         >
           <View style={styles.headerRow}>
           <View>
-            <Text style={styles.headerLabel}>Customer app</Text>
-            <Text style={styles.headerTitle}>Hello {profile?.fullName?.split(" ")[0] ?? "there"}</Text>
+            <Text style={styles.headerTitle}>
+              <Text style={styles.headerGreeting}>Hello </Text>
+              {profile?.fullName?.split(" ")[0] ?? "there"}
+            </Text>
           </View>
           <Pressable style={styles.ghostButton} onPress={refreshDashboard}>
             <Text style={styles.ghostButtonText}>{refreshing ? "Refreshing..." : "Refresh"}</Text>
@@ -1170,7 +2053,12 @@ export default function App() {
 
         <View style={styles.mapCard} pointerEvents="box-none">
           <View style={styles.mapFrame} pointerEvents="none">
-            <MapSurface currentLocation={currentLocation} pickup={pickupCoordinate} destination={destinationCoordinate} />
+            <MapSurface
+              currentLocation={currentLocation}
+              pickup={pickupCoordinate}
+              destination={destinationCoordinate}
+              preferCanadaFallback={androidLocationFallbackActive && !pickupCoordinate}
+            />
           </View>
           <Pressable style={styles.mapTapLayer} onPress={() => setFullScreenMapVisible(true)}>
             <Text style={styles.mapTapText}>Tap for full map</Text>
@@ -1203,6 +2091,7 @@ export default function App() {
                   value={form.pickupLocation}
                   onChangeText={(value) => {
                     pickupManuallyEditedRef.current = true;
+                    setPickupLockedVisible(false);
                     setForm((currentForm) => ({
                       ...currentForm,
                       pickupLocation: value,
@@ -1216,6 +2105,14 @@ export default function App() {
                   placeholderTextColor="#94A3B8"
                 />
               </View>
+              {pickupLockedVisible && pickupCoordinate ? (
+                <View style={styles.pickupLockedCard}>
+                  <View style={styles.pickupLockedBadge}>
+                    <View style={styles.pickupLockedDot} />
+                    <Text style={styles.pickupLockedBadgeText}>Pickup locked</Text>
+                  </View>
+                </View>
+              ) : null}
               {activeSearchField === "pickup" && suggestions.length > 0 ? (
                 <View style={styles.suggestionPanel}>
                   {suggestions.map((suggestion) => (
@@ -1261,6 +2158,11 @@ export default function App() {
                       <Text style={styles.suggestionText}>{suggestion.label}</Text>
                     </Pressable>
                   ))}
+                </View>
+              ) : null}
+              {Platform.OS === "android" && androidLocationFallbackActive ? (
+                <View style={styles.locationHintCard}>
+                  <Text style={styles.locationHintTitle}>Turn on location</Text>
                 </View>
               ) : null}
               <TextInput
@@ -1383,14 +2285,9 @@ export default function App() {
                 <Text style={styles.estimateMeta}>
                   {estimate?.billableHours
                     ? `${estimate.billableHours} billable hour${estimate.billableHours === 1 ? "" : "s"} at $${estimate.flatFeePerHour}/hour`
-                    : scheduleMode === "now"
-                      ? "Maps unlock shortly before the trip window."
-                      : "Trip tracking opens inside the approved window."}
+                    : ""}
                 </Text>
               </View>
-              {scheduleMode === "now" ? (
-                <Text style={styles.detailsFooterNote}>Pickup window starts about 15 minutes from now.</Text>
-              ) : null}
             </View>
 
             <Pressable style={[styles.primaryButton, busy && styles.buttonDisabled]} disabled={busy} onPress={() => submitBooking(scheduleMode)}>
@@ -1418,22 +2315,64 @@ export default function App() {
                 <Text style={styles.bookingTitle}>{activeBooking.pickupLocation}</Text>
                 <Text style={styles.bookingCopy}>{activeBooking.destinationLocation}</Text>
                 <Text style={styles.bookingMeta}>{formatDateTime(activeBooking.scheduledStartAt)}</Text>
-                {mapState ? (
-                  <View style={styles.infoStrip}>
-                    <Text style={styles.infoStripText}>
-                      {mapState.active ? "Tracking is active for this trip." : "Tracking is locked until the approved trip window opens."}
-                    </Text>
-                  </View>
-                ) : null}
-                {String(activeBooking.status).toLowerCase() === "awaiting_payment" ? (
-                  <View style={styles.infoStrip}>
-                    <Text style={styles.infoStripText}>Complete payment before driver matching begins.</Text>
-                  </View>
-                ) : null}
+                {renderRoutingStatus(activeBooking)}
                 {renderPaymentBlock(activeBooking)}
+                {canUseTripMessages(activeBooking) ? (
+                  <View style={styles.chatCard}>
+                    <Text style={styles.chatTitle}>Messages</Text>
+                    <View style={styles.chatQuickReplyRow}>
+                      {customerQuickTripMessages.map((message) => (
+                        <Pressable
+                          key={message}
+                          style={[styles.chatQuickReplyChip, tripMessagesBusy && styles.buttonDisabled]}
+                          disabled={tripMessagesBusy}
+                          onPress={() => handleSendTripMessage(message)}
+                        >
+                          <Text style={styles.chatQuickReplyText}>{message}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={styles.chatThread}>
+                      {tripMessages.length ? (
+                        tripMessages.map((message) => {
+                          const mine = message.sender.id === session.user.id;
+                          return (
+                            <View
+                              key={message.id}
+                              style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}
+                            >
+                              <Text style={styles.chatSenderLabel}>{mine ? "You" : message.sender.fullName}</Text>
+                              <Text style={styles.chatBubbleText}>{message.body}</Text>
+                              <Text style={styles.chatMetaText}>{formatDateTime(message.createdAt)}</Text>
+                            </View>
+                          );
+                        })
+                      ) : (
+                        <Text style={styles.emptyText}>No messages.</Text>
+                      )}
+                    </View>
+                    <View style={styles.chatComposerRow}>
+                      <TextInput
+                        style={styles.chatInput}
+                        value={tripMessageDraft}
+                        onChangeText={setTripMessageDraft}
+                        placeholder="Send a message"
+                        placeholderTextColor="#94A3B8"
+                        editable={!tripMessagesBusy}
+                      />
+                      <Pressable
+                        style={[styles.chatSendButton, (tripMessagesBusy || !tripMessageDraft.trim()) && styles.buttonDisabled]}
+                        disabled={tripMessagesBusy || !tripMessageDraft.trim()}
+                        onPress={() => handleSendTripMessage()}
+                      >
+                        <Text style={styles.chatSendButtonText}>{tripMessagesBusy ? "..." : "Send"}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
               </View>
             ) : (
-              <Text style={styles.emptyText}>No active booking yet.</Text>
+              <Text style={styles.emptyText}>No active trips.</Text>
             )}
 
             {visibleTripHistory.map((booking) => (
@@ -1446,6 +2385,7 @@ export default function App() {
                 <Text style={styles.bookingCopy}>{booking.destinationLocation}</Text>
                 <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartAt)}</Text>
                 {renderPaymentBlock(booking)}
+                {renderRatingBlock(booking)}
               </View>
             ))}
           </View>
@@ -1454,6 +2394,20 @@ export default function App() {
         {tab === "account" ? (
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Account</Text>
+            {!isCustomerReadyForBooking ? (
+              <View style={styles.bookingVerificationCard}>
+                <Text style={styles.bookingVerificationTitle}>LET’S GET YOU VERIFIED</Text>
+                <Text style={styles.bookingVerificationCopy}>Your safety — and your driver’s — matters to us.</Text>
+                <Text style={styles.bookingVerificationStep}>1. Add your phone number</Text>
+                <Text style={styles.bookingVerificationStep}>2. Confirm your identity</Text>
+                <Text style={styles.bookingVerificationStep}>3. Add your vehicle</Text>
+              </View>
+            ) : null}
+            {isVerifiedCustomer ? (
+              <View style={styles.verifiedCustomerBadge}>
+                <Text style={styles.verifiedCustomerBadgeText}>✓ CHAUFX VERIFIED CUSTOMER</Text>
+              </View>
+            ) : null}
             <View style={styles.accountRow}>
               <Text style={styles.accountLabel}>Name</Text>
               <Text style={styles.accountValue}>{profile?.fullName ?? session.user.fullName}</Text>
@@ -1462,6 +2416,205 @@ export default function App() {
               <Text style={styles.accountLabel}>Email</Text>
               <Text style={styles.accountValue}>{profile?.email ?? session.user.email}</Text>
             </View>
+
+            <View style={styles.accountFormSection}>
+              <Text style={styles.accountSectionTitle}>Personal details</Text>
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Mobile phone (+1)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="phone-pad"
+                textContentType="telephoneNumber"
+                autoComplete="tel"
+                maxLength={17}
+                value={customerAccountForm.phone}
+                onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, phone: formatCanadianPhoneNumber(value) }))}
+              />
+              <Pressable style={styles.accountTextInput} onPress={() => setShowDateOfBirthPicker((visible) => !visible)}>
+                <Text style={customerAccountForm.dateOfBirth ? styles.accountTextInputValue : styles.accountTextInputPlaceholder}>
+                  {customerAccountForm.dateOfBirth || "Date of birth"}
+                </Text>
+              </Pressable>
+              {showDateOfBirthPicker ? (
+                <DateTimePicker
+                  value={customerAccountForm.dateOfBirth ? new Date(`${customerAccountForm.dateOfBirth}T12:00:00`) : new Date(1990, 0, 1)}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  maximumDate={new Date()}
+                  onChange={(event, value) => {
+                    if (Platform.OS === "android") {
+                      setShowDateOfBirthPicker(false);
+                    }
+                    if (event.type === "set" && value) {
+                      setCustomerAccountForm((current) => ({ ...current, dateOfBirth: formatLocalDate(value) }));
+                    }
+                  }}
+                />
+              ) : null}
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Home or primary address"
+                placeholderTextColor="#94A3B8"
+                value={customerAccountForm.primaryAddress}
+                onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, primaryAddress: value }))}
+                multiline
+              />
+            </View>
+
+            <View style={styles.accountFormSection}>
+              <Text style={styles.accountSectionTitle}>Emergency contact</Text>
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Emergency contact name"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="words"
+                value={customerAccountForm.emergencyContactName}
+                onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, emergencyContactName: value }))}
+              />
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Emergency phone (+1)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="phone-pad"
+                textContentType="telephoneNumber"
+                autoComplete="tel"
+                maxLength={17}
+                value={customerAccountForm.emergencyContactPhone}
+                onChangeText={(value) =>
+                  setCustomerAccountForm((current) => ({ ...current, emergencyContactPhone: formatCanadianPhoneNumber(value) }))
+                }
+              />
+            </View>
+
+            <View style={styles.accountFormSection}>
+              <Text style={styles.accountSectionTitle}>Vehicle</Text>
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Vehicle make"
+                placeholderTextColor="#94A3B8"
+                value={customerAccountForm.vehicleMake}
+                onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, vehicleMake: value }))}
+              />
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Vehicle model"
+                placeholderTextColor="#94A3B8"
+                value={customerAccountForm.vehicleModel}
+                onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, vehicleModel: value }))}
+              />
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Licence plate"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="characters"
+                value={customerAccountForm.licencePlate}
+                onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, licencePlate: value }))}
+              />
+              <TextInput
+                style={styles.accountTextInput}
+                placeholder="Province of registration"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="words"
+                value={customerAccountForm.registrationProvince}
+                onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, registrationProvince: value }))}
+              />
+            </View>
+
+            <View style={styles.accountFormSection}>
+              <Text style={styles.accountSectionTitle}>Government issued photo ID</Text>
+              <Text style={styles.accountDocumentStatus}>
+                {governmentPhotoId?.fileName ?? profile?.customerProfile?.identityDocument?.fileName ?? "No photo ID selected"}
+              </Text>
+              <Pressable style={styles.secondaryButton} onPress={handlePickGovernmentPhotoId}>
+                <Text style={styles.secondaryButtonText}>
+                  {governmentPhotoId || profile?.customerProfile?.identityDocument ? "Replace photo ID" : "Select photo ID"}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.accountFormSection}>
+              <Text style={styles.accountSectionTitle}>Confirmations</Text>
+              <Pressable
+                style={styles.confirmationRow}
+                onPress={() =>
+                  setCustomerAccountForm((current) => ({
+                    ...current,
+                    vehicleComplianceConfirmed: !current.vehicleComplianceConfirmed
+                  }))
+                }
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: customerAccountForm.vehicleComplianceConfirmed }}
+              >
+                <View style={[styles.confirmationBox, customerAccountForm.vehicleComplianceConfirmed && styles.confirmationBoxSelected]}>
+                  <Text style={styles.confirmationMark}>{customerAccountForm.vehicleComplianceConfirmed ? "✓" : ""}</Text>
+                </View>
+                <Text style={styles.confirmationText}>
+                  My vehicle is properly registered, fully insured, and meets Canadian road safety requirements.
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmationRow}
+                onPress={() => setCustomerAccountForm((current) => ({ ...current, termsAccepted: !current.termsAccepted }))}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: customerAccountForm.termsAccepted }}
+              >
+                <View style={[styles.confirmationBox, customerAccountForm.termsAccepted && styles.confirmationBoxSelected]}>
+                  <Text style={styles.confirmationMark}>{customerAccountForm.termsAccepted ? "✓" : ""}</Text>
+                </View>
+                <Text style={styles.confirmationText}>I accept the ChaufX Terms & Conditions.</Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmationRow}
+                onPress={() => setCustomerAccountForm((current) => ({ ...current, privacyPolicyAccepted: !current.privacyPolicyAccepted }))}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: customerAccountForm.privacyPolicyAccepted }}
+              >
+                <View style={[styles.confirmationBox, customerAccountForm.privacyPolicyAccepted && styles.confirmationBoxSelected]}>
+                  <Text style={styles.confirmationMark}>{customerAccountForm.privacyPolicyAccepted ? "✓" : ""}</Text>
+                </View>
+                <Text style={styles.confirmationText}>I accept the Privacy Policy.</Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmationRow}
+                onPress={() =>
+                  setCustomerAccountForm((current) => ({
+                    ...current,
+                    identityVerificationConsented: !current.identityVerificationConsented
+                  }))
+                }
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: customerAccountForm.identityVerificationConsented }}
+              >
+                <View style={[styles.confirmationBox, customerAccountForm.identityVerificationConsented && styles.confirmationBoxSelected]}>
+                  <Text style={styles.confirmationMark}>{customerAccountForm.identityVerificationConsented ? "✓" : ""}</Text>
+                </View>
+                <Text style={styles.confirmationText}>I consent to identity verification.</Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmationRow}
+                onPress={() =>
+                  setCustomerAccountForm((current) => ({
+                    ...current,
+                    vehicleAuthorityConfirmed: !current.vehicleAuthorityConfirmed
+                  }))
+                }
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: customerAccountForm.vehicleAuthorityConfirmed }}
+              >
+                <View style={[styles.confirmationBox, customerAccountForm.vehicleAuthorityConfirmed && styles.confirmationBoxSelected]}>
+                  <Text style={styles.confirmationMark}>{customerAccountForm.vehicleAuthorityConfirmed ? "✓" : ""}</Text>
+                </View>
+                <Text style={styles.confirmationText}>I have authority to allow the driver to operate this vehicle.</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={[styles.primaryButton, customerProfileSaving && styles.buttonDisabled]}
+              disabled={customerProfileSaving}
+              onPress={handleSaveCustomerProfile}
+            >
+              {customerProfileSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Save account details</Text>}
+            </Pressable>
             <Pressable style={styles.secondaryButton} onPress={logout}>
               <Text style={styles.secondaryButtonText}>Log out</Text>
             </Pressable>
@@ -1482,6 +2635,7 @@ export default function App() {
             currentLocation={currentLocation}
             pickup={pickupCoordinate}
             destination={destinationCoordinate}
+            preferCanadaFallback={androidLocationFallbackActive && !pickupCoordinate}
             interactive
           />
           {renderMapLegend()}
@@ -1695,6 +2849,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 4
   },
+  headerGreeting: {
+    fontSize: 18,
+    fontWeight: "400"
+  },
   ghostButton: {
     borderRadius: 999,
     borderWidth: 1,
@@ -1885,6 +3043,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700"
   },
+  bookingVerificationCard: {
+    borderRadius: 18,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    padding: 14,
+    gap: 7
+  },
+  bookingVerificationTitle: {
+    color: "#1D4ED8",
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.8
+  },
+  bookingVerificationCopy: {
+    color: "#334155",
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 3
+  },
+  bookingVerificationStep: {
+    color: "#0F172A",
+    fontSize: 14,
+    fontWeight: "600"
+  },
   detailsBlockTitle: {
     color: "#0F172A",
     fontSize: 16,
@@ -1944,6 +3127,59 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12
+  },
+  locationHintCard: {
+    borderRadius: 18,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    padding: 14,
+    gap: 6
+  },
+  locationHintTitle: {
+    color: "#9A3412",
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20
+  },
+  locationHintText: {
+    color: "#9A3412",
+    fontSize: 13,
+    lineHeight: 19
+  },
+  pickupLockedCard: {
+    borderRadius: 18,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+    padding: 14,
+    gap: 8
+  },
+  pickupLockedBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  pickupLockedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#16A34A"
+  },
+  pickupLockedBadgeText: {
+    color: "#166534",
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  pickupLockedText: {
+    color: "#166534",
+    fontSize: 13,
+    lineHeight: 19
   },
   addressIconWrap: {
     width: 30,
@@ -2189,6 +3425,182 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 6
   },
+  chatCard: {
+    marginTop: 10,
+    borderRadius: 18,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    padding: 12,
+    gap: 10
+  },
+  chatTitle: {
+    color: "#0F172A",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  chatQuickReplyRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  chatQuickReplyChip: {
+    borderRadius: 999,
+    backgroundColor: "#E0E7FF",
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  chatQuickReplyText: {
+    color: "#4338CA",
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  chatThread: {
+    gap: 8
+  },
+  chatBubble: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4
+  },
+  chatBubbleMine: {
+    backgroundColor: "#DBEAFE",
+    alignSelf: "flex-end",
+    maxWidth: "88%"
+  },
+  chatBubbleOther: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignSelf: "flex-start",
+    maxWidth: "88%"
+  },
+  chatSenderLabel: {
+    color: "#64748B",
+    fontSize: 11,
+    fontWeight: "700"
+  },
+  chatBubbleText: {
+    color: "#0F172A",
+    fontSize: 14,
+    lineHeight: 20
+  },
+  chatMetaText: {
+    color: "#64748B",
+    fontSize: 11
+  },
+  chatComposerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  chatInput: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: "#0F172A",
+    fontSize: 14
+  },
+  chatSendButton: {
+    borderRadius: 16,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  chatSendButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  ratingBlock: {
+    marginTop: 10,
+    borderRadius: 18,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    padding: 12,
+    gap: 10
+  },
+  ratingComposer: {
+    gap: 10
+  },
+  ratingLabel: {
+    color: "#0F172A",
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  ratingSummary: {
+    color: "#2563EB",
+    fontSize: 14,
+    fontWeight: "700"
+  },
+  ratingStarsRow: {
+    flexDirection: "row",
+    gap: 8
+  },
+  ratingStarButton: {
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  ratingStarText: {
+    color: "#94A3B8",
+    fontSize: 24,
+    lineHeight: 28
+  },
+  ratingStarTextActive: {
+    color: "#F59E0B"
+  },
+  ratingActionsRow: {
+    flexDirection: "row",
+    gap: 10
+  },
+  ratingActionButton: {
+    alignSelf: "flex-start",
+    borderRadius: 16,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 16,
+    paddingVertical: 12
+  },
+  ratingActionButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  ratingSubmitButton: {
+    borderRadius: 16,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 16,
+    paddingVertical: 12
+  },
+  ratingSubmitButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  ratingCancelButton: {
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    paddingHorizontal: 16,
+    paddingVertical: 12
+  },
+  ratingCancelButtonText: {
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "700"
+  },
   bookingHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2218,6 +3630,10 @@ const styles = StyleSheet.create({
   linkText: {
     color: "#2563EB",
     fontWeight: "700"
+  },
+  authModeLink: {
+    alignSelf: "center",
+    paddingTop: 2
   },
   bookingTitle: {
     color: "#0F172A",
@@ -2334,6 +3750,68 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800"
   },
+  routingPanel: {
+    borderRadius: 24,
+    backgroundColor: "#EEF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    padding: 16,
+    gap: 8
+  },
+  routingEyebrow: {
+    color: "#2563EB",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase"
+  },
+  routingTitle: {
+    color: "#0F172A",
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 22
+  },
+  routingCopy: {
+    color: "#475569",
+    fontSize: 13,
+    lineHeight: 19
+  },
+  routingCard: {
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    padding: 14,
+    gap: 4
+  },
+  routingCardTitle: {
+    color: "#0F172A",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  routingCardDistance: {
+    color: "#2563EB",
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  routingCardStatus: {
+    color: "#64748B",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  routingDots: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center"
+  },
+  routingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#BFDBFE"
+  },
+  routingDotActive: {
+    width: 20,
+    backgroundColor: "#2563EB"
+  },
   infoStrip: {
     marginTop: 8,
     borderRadius: 16,
@@ -2368,6 +3846,87 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     marginTop: 6
+  },
+  verifiedCustomerBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: "#DCFCE7",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  verifiedCustomerBadgeText: {
+    color: "#15803D",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.9
+  },
+  accountFormSection: {
+    gap: 10,
+    paddingTop: 4
+  },
+  accountSectionTitle: {
+    color: "#0F172A",
+    fontSize: 16,
+    fontWeight: "700"
+  },
+  accountTextInput: {
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    color: "#0F172A",
+    fontSize: 15,
+    justifyContent: "center"
+  },
+  accountTextInputValue: {
+    color: "#0F172A",
+    fontSize: 15
+  },
+  accountTextInputPlaceholder: {
+    color: "#94A3B8",
+    fontSize: 15
+  },
+  accountDocumentStatus: {
+    color: "#64748B",
+    fontSize: 14,
+    lineHeight: 20
+  },
+  confirmationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 5
+  },
+  confirmationBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: "#94A3B8",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1
+  },
+  confirmationBoxSelected: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB"
+  },
+  confirmationMark: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 18
+  },
+  confirmationText: {
+    flex: 1,
+    color: "#334155",
+    fontSize: 14,
+    lineHeight: 20
   },
   androidPickerOverlay: {
     flex: 1,
