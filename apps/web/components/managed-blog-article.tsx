@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type { ManagedBlogPost } from "../lib/blog";
 
 function formatArticleDate(value?: string | null) {
@@ -42,6 +45,16 @@ function buildVideoEmbedUrl(value: string) {
   }
 
   return url;
+}
+
+function ArticleImage({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return null;
+  }
+
+  return <img src={src} alt={alt} className="w-full object-cover" onError={() => setFailed(true)} />;
 }
 
 export function renderArticleBody(body: string) {
@@ -189,7 +202,7 @@ export function ManagedBlogArticle({ post }: { post: ManagedBlogPost }) {
                 if (block.type === "image") {
                   return (
                     <div key={`${block.type}-${index}`} className="overflow-hidden rounded-[28px] border border-[#E5E7EB] bg-[#F8FAFC]">
-                      <img src={block.src} alt={block.alt} className="w-full object-cover" />
+                      <ArticleImage src={block.src} alt={block.alt} />
                     </div>
                   );
                 }

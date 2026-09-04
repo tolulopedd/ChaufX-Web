@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AdminShell, Panel } from "../../components/admin-shell";
 import { ManagedBlogArticle } from "../../components/managed-blog-article";
@@ -85,6 +85,8 @@ export default function BlogManagerPage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState("");
   const [editorMode, setEditorMode] = useState<"write" | "preview">("write");
+  const [mediaInsert, setMediaInsert] = useState<{ type: "image" | "video"; url: string; title: string } | null>(null);
+  const bodyEditorRef = useRef<HTMLTextAreaElement>(null);
 
   async function loadPosts() {
     setLoading(true);
@@ -221,11 +223,62 @@ export default function BlogManagerPage() {
     }
   }
 
-  function insertBodySnippet(snippet: string) {
-    setForm((current) => ({
-      ...current,
-      body: current.body.trim() ? `${current.body.replace(/\s*$/, "")}\n\n${snippet}` : snippet
-    }));
+  function replaceBodySelection(value: string, selectionStart?: number, selectionEnd?: number) {
+    const editor = bodyEditorRef.current;
+    const start = selectionStart ?? editor?.selectionStart ?? form.body.length;
+    const end = selectionEnd ?? editor?.selectionEnd ?? start;
+    const nextBody = `${form.body.slice(0, start)}${value}${form.body.slice(end)}`;
+    const cursor = start + value.length;
+
+    setForm((current) => ({ ...current, body: nextBody }));
+    requestAnimationFrame(() => {
+      editor?.focus();
+      editor?.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function insertBlock(value: string) {
+    const editor = bodyEditorRef.current;
+    const start = editor?.selectionStart ?? form.body.length;
+    const end = editor?.selectionEnd ?? start;
+    const needsLeadingBreak = start > 0 && !form.body.slice(0, start).endsWith("\n\n");
+    const needsTrailingBreak = end < form.body.length && !form.body.slice(end).startsWith("\n\n");
+    const block = `${needsLeadingBreak ? "\n\n" : ""}${value}${needsTrailingBreak ? "\n\n" : ""}`;
+
+    replaceBodySelection(block, start, end);
+  }
+
+  function applyHeading(level: 2 | 3) {
+    const editor = bodyEditorRef.current;
+    const start = editor?.selectionStart ?? form.body.length;
+    const end = editor?.selectionEnd ?? start;
+    const selectedText = form.body.slice(start, end).trim() || (level === 2 ? "Section heading" : "Subheading");
+
+    insertBlock(`${"#".repeat(level)} ${selectedText}`);
+  }
+
+  function applyBulletList() {
+    const editor = bodyEditorRef.current;
+    const start = editor?.selectionStart ?? form.body.length;
+    const end = editor?.selectionEnd ?? start;
+    const selectedText = form.body.slice(start, end).trim();
+    const list = selectedText ? selectedText.split(/\r?\n/).map((line) => `- ${line.trim()}`).join("\n") : "- Bullet point";
+
+    insertBlock(list);
+  }
+
+  function insertMedia() {
+    if (!mediaInsert?.url.trim()) {
+      return;
+    }
+
+    const title = mediaInsert.title.trim() || (mediaInsert.type === "image" ? "Article image" : "Article video");
+    insertBlock(
+      mediaInsert.type === "image"
+        ? `![${title}](${mediaInsert.url.trim()})`
+        : `video[${title}]: ${mediaInsert.url.trim()}`
+    );
+    setMediaInsert(null);
   }
 
   const previewPost = useMemo(() => buildPreviewPost(form), [form]);
@@ -400,34 +453,52 @@ export default function BlogManagerPage() {
                   </label>
 
                   <div className="md:col-span-2 flex flex-wrap gap-2">
-                    <button type="button" className={adminGhostButtonClass} onClick={() => insertBodySnippet("## Section heading")}>
+                    <button type="button" className={adminGhostButtonClass} onClick={() => applyHeading(2)}>
                       H2
                     </button>
-                    <button type="button" className={adminGhostButtonClass} onClick={() => insertBodySnippet("### Subheading")}>
+                    <button type="button" className={adminGhostButtonClass} onClick={() => applyHeading(3)}>
                       H3
                     </button>
-                    <button type="button" className={adminGhostButtonClass} onClick={() => insertBodySnippet("- Bullet point")}>
+                    <button type="button" className={adminGhostButtonClass} onClick={applyBulletList}>
                       Bullet
                     </button>
-                    <button
-                      type="button"
-                      className={adminGhostButtonClass}
-                      onClick={() => insertBodySnippet("![Image alt](https://example.com/image.jpg)")}
-                    >
+                    <button type="button" className={adminGhostButtonClass} onClick={() => setMediaInsert({ type: "image", url: "", title: "" })}>
                       Image
                     </button>
-                    <button
-                      type="button"
-                      className={adminGhostButtonClass}
-                      onClick={() => insertBodySnippet("video[Video title]: https://www.youtube.com/watch?v=VIDEO_ID")}
-                    >
+                    <button type="button" className={adminGhostButtonClass} onClick={() => setMediaInsert({ type: "video", url: "", title: "" })}>
                       Video
                     </button>
                   </div>
 
+                  {mediaInsert ? (
+                    <div className="md:col-span-2 grid gap-3 rounded-2xl border border-[#D7DEEF] bg-[#F8FAFC] p-4 md:grid-cols-[1fr_1fr_auto]">
+                      <input
+                        value={mediaInsert.url}
+                        onChange={(event) => setMediaInsert((current) => (current ? { ...current, url: event.target.value } : current))}
+                        className={adminInputClass}
+                        placeholder={mediaInsert.type === "image" ? "Image URL" : "YouTube, Vimeo, or MP4 URL"}
+                      />
+                      <input
+                        value={mediaInsert.title}
+                        onChange={(event) => setMediaInsert((current) => (current ? { ...current, title: event.target.value } : current))}
+                        className={adminInputClass}
+                        placeholder={mediaInsert.type === "image" ? "Image description" : "Video title"}
+                      />
+                      <div className="flex gap-2">
+                        <button type="button" className={adminPrimaryButtonClass} onClick={insertMedia} disabled={!mediaInsert.url.trim()}>
+                          Insert
+                        </button>
+                        <button type="button" className={adminGhostButtonClass} onClick={() => setMediaInsert(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <label className="block md:col-span-2">
                     <span className="mb-2 block text-sm font-medium text-slate-700">Article body</span>
                     <textarea
+                      ref={bodyEditorRef}
                       value={form.body}
                       onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
                       className={`${adminInputClass} min-h-[420px]`}
