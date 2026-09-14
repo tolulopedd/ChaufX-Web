@@ -53,8 +53,8 @@ export function PublicSiteFooter() {
             <div className="space-y-2">
               <p className="text-sm text-slate-500">Copyright 2026 ChaufX. All rights reserved.</p>
               <div className="flex flex-col gap-1 text-sm text-slate-600 md:flex-row md:gap-4">
-                <a href="tel:+16479197237" className="transition hover:text-[#2563EB]">
-                  +1 (647) 919-7237
+                <a href="tel:+13656885536" className="transition hover:text-[#2563EB]">
+                  +1 (365) 688-5536
                 </a>
                 <a href="mailto:info@chaufx.ca" className="transition hover:text-[#2563EB]">
                   info@chaufx.ca
