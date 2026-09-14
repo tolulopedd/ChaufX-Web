@@ -168,7 +168,7 @@ export const policyDocuments: PolicyDocument[] = [
         bullets: [
           "Address: ChaufX Inc., 2 Simcoe Street South, Suite 300, Oshawa, Ontario L1H 8C1",
           "Email: privacysupport@chaufx.ca",
-          "Phone: +1 (647) 919-7237"
+          "Phone: +1 (365) 688-5536"
         ]
       }
     ]

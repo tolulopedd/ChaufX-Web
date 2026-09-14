@@ -15,8 +15,8 @@ export default function ContactPage() {
               <div className="mt-6 space-y-5">
                 <div>
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Phone</div>
-                  <a href="tel:+16479197237" className="mt-2 block text-lg font-semibold text-[#0F172A]">
-                    +1 (647) 919-7237
+                  <a href="tel:+13656885536" className="mt-2 block text-lg font-semibold text-[#0F172A]">
+                    +1 (365) 688-5536
                   </a>
                 </div>
                 <div>
