@@ -21,8 +21,24 @@ const provincesAndTerritories = [
   "Yukon"
 ] as const;
 
+const licenceClassesByJurisdiction: Record<(typeof provincesAndTerritories)[number], string[]> = {
+  Alberta: ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"],
+  "British Columbia": ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8"],
+  Manitoba: ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6"],
+  "New Brunswick": ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9"],
+  "Newfoundland and Labrador": ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8"],
+  "Northwest Territories": ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"],
+  "Nova Scotia": ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8"],
+  Nunavut: ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"],
+  Ontario: ["Class A", "Class B", "Class C", "Class D", "Class E", "Class F", "Class G", "Class G1", "Class G2", "Class M", "Class M1", "Class M2"],
+  "Prince Edward Island": ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"],
+  Quebec: ["Class 1", "Class 2", "Class 3", "Class 4A", "Class 4B", "Class 4C", "Class 5", "Class 6A", "Class 6B", "Class 6C", "Class 6D", "Class 6E", "Class 8"],
+  Saskatchewan: ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"],
+  Yukon: ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"]
+};
+
 const experienceMap: Record<string, number> = {
-  "1-2": 2,
+  "2-3": 2,
   "3-5": 4,
   "5-10": 7,
   "10+": 10
@@ -31,13 +47,33 @@ const experienceMap: Record<string, number> = {
 const uploadAccept = ".pdf,.png,.jpg,.jpeg,.webp";
 const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
+function formatCanadianPhoneNumber(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const localNumber = digits.startsWith("1") ? digits.slice(1, 11) : digits.slice(0, 10);
+
+  if (!localNumber) {
+    return "";
+  }
+  if (localNumber.length <= 3) {
+    return `+1 (${localNumber}`;
+  }
+  if (localNumber.length <= 6) {
+    return `+1 (${localNumber.slice(0, 3)}) ${localNumber.slice(3)}`;
+  }
+
+  return `+1 (${localNumber.slice(0, 3)}) ${localNumber.slice(3, 6)}-${localNumber.slice(6)}`;
+}
+
+function formatCanadianPostalCode(value: string) {
+  const characters = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+
+  return characters.length > 3 ? `${characters.slice(0, 3)} ${characters.slice(3)}` : characters;
+}
+
 type DocumentUploadKey =
   | "driverLicenseFront"
   | "driverLicenseBack"
-  | "driverAbstract"
-  | "backgroundCheck"
-  | "proofOfAddress"
-  | "resume"
+  | "proofOfInsurance"
   | "workAuthorization"
   | "healthTrainingCertificate"
   | "signature";
@@ -53,9 +89,7 @@ type AddressSuggestion = {
 const requiredUploadFields: DocumentUploadKey[] = [
   "driverLicenseFront",
   "driverLicenseBack",
-  "driverAbstract",
-  "backgroundCheck",
-  "proofOfAddress"
+  "proofOfInsurance"
 ];
 
 const documentUploadFields: Array<{
@@ -65,10 +99,7 @@ const documentUploadFields: Array<{
 }> = [
   { label: "* Valid Driver’s License (Front page)", key: "driverLicenseFront", required: true },
   { label: "* Valid Driver’s License (Back page)", key: "driverLicenseBack", required: true },
-  { label: "* Driver’s Abstract (last 3 years)", key: "driverAbstract", required: true },
-  { label: "* Criminal Background Check", key: "backgroundCheck", required: true },
-  { label: "*Proof of Address (Utility Bill or Bank Statement)", key: "proofOfAddress", required: true },
-  { label: "Resume (Optional but recommended)", key: "resume", required: false },
+  { label: "* Proof of Insurance", key: "proofOfInsurance", required: true },
   { label: "Proof of Work Authorization (For Canadian temporary residents)", key: "workAuthorization", required: false },
   { label: "First Aid / CPR / PSW / Health or emergency training certificate", key: "healthTrainingCertificate", required: false }
 ];
@@ -151,15 +182,13 @@ function DriverApplicationFormPageContent() {
   const [error, setError] = useState("");
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [addressSearching, setAddressSearching] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
   const verified = searchParams.get("verified") === "1";
   const suppressAddressSearchRef = useRef(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<DocumentUploadKey, File | null>>({
     driverLicenseFront: null,
     driverLicenseBack: null,
-    driverAbstract: null,
-    backgroundCheck: null,
-    proofOfAddress: null,
-    resume: null,
+    proofOfInsurance: null,
     workAuthorization: null,
     healthTrainingCertificate: null,
     signature: null
@@ -168,7 +197,7 @@ function DriverApplicationFormPageContent() {
     verificationToken: searchParams.get("verificationToken") ?? "",
     firstName: searchParams.get("firstName") ?? "",
     lastName: searchParams.get("lastName") ?? "",
-    phone: searchParams.get("phone") ?? "",
+    phone: formatCanadianPhoneNumber(searchParams.get("phone") ?? ""),
     email: searchParams.get("email") ?? "",
     dateOfBirth: "",
     address: "",
@@ -176,10 +205,10 @@ function DriverApplicationFormPageContent() {
     postalCode: "",
     workAuthorized: "yes",
     licenseNumber: "",
-    provinceOfIssue: "Manitoba",
-    licenseClass: "G",
+    provinceOfIssue: "",
+    licenseClass: "",
     licenseExpiryDate: "",
-    experienceBand: "3-5",
+    experienceBand: "2-3",
     trafficViolations: "no",
     trafficViolationsNotes: "",
     licenseSuspensions: "no",
@@ -209,7 +238,7 @@ function DriverApplicationFormPageContent() {
     professionalStandards: true,
     signatureName: "",
     applicationDate: new Date().toISOString().slice(0, 10),
-    serviceProvince: "Manitoba"
+    serviceProvince: ""
   });
 
   const professionalExperienceOptions = useMemo(
@@ -268,11 +297,12 @@ function DriverApplicationFormPageContent() {
 
   function applyAddressSuggestion(suggestion: AddressSuggestion) {
     suppressAddressSearchRef.current = true;
+    setSelectedAddressId(suggestion.id);
     setForm((current) => ({
       ...current,
       address: suggestion.addressLine || suggestion.label,
       city: suggestion.city || current.city,
-      postalCode: suggestion.postalCode || current.postalCode
+      postalCode: current.postalCode
     }));
     setAddressSuggestions([]);
   }
@@ -281,6 +311,12 @@ function DriverApplicationFormPageContent() {
     event.preventDefault();
     setLoading(true);
     setError("");
+
+    if (mapboxToken && !selectedAddressId) {
+      setError("Select your home address from the Mapbox suggestions.");
+      setLoading(false);
+      return;
+    }
 
     const missingDocuments = requiredUploadFields.filter((key) => !uploadedFiles[key]);
 
@@ -340,10 +376,7 @@ function DriverApplicationFormPageContent() {
         [
           ["DRIVER_LICENSE", "Driver license - front", uploadedFiles.driverLicenseFront],
           ["DRIVER_LICENSE", "Driver license - back", uploadedFiles.driverLicenseBack],
-          ["OTHER", "Driver abstract", uploadedFiles.driverAbstract],
-          ["BACKGROUND_CHECK", "Criminal background check", uploadedFiles.backgroundCheck],
-          ["OTHER", "Proof of address", uploadedFiles.proofOfAddress],
-          ["OTHER", "Resume", uploadedFiles.resume],
+          ["OTHER", "Proof of insurance", uploadedFiles.proofOfInsurance],
           ["OTHER", "Proof of work authorization", uploadedFiles.workAuthorization],
           ["OTHER", "Health or emergency training certificate", uploadedFiles.healthTrainingCertificate],
           ["OTHER", "Signature", uploadedFiles.signature]
@@ -375,7 +408,7 @@ function DriverApplicationFormPageContent() {
         documents
       });
 
-      router.push(`/driver/status?email=${encodeURIComponent(form.email)}`);
+      router.push(`/driver/background-check?email=${encodeURIComponent(form.email)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to submit application");
     } finally {
@@ -386,17 +419,15 @@ function DriverApplicationFormPageContent() {
   return (
     <PublicPageShell
       heroTitle="Driver application form"
-      heroCopy="Complete the detailed ChaufX driver application form. Your finished submission is routed directly to the admin review module."
     >
       <section className="bg-white">
         <div className="mx-auto max-w-6xl px-5 py-12 md:px-8">
           <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
             <div>
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Detailed onboarding</div>
-              <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">Complete your driver application</h1>
+              <h1 className="text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">Complete your driver application</h1>
               {verified ? (
                 <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  Your email has been verified. Kindly complete the onboarding application form.
+                  Email verified.
                 </p>
               ) : null}
               {!form.verificationToken ? (
@@ -418,7 +449,16 @@ function DriverApplicationFormPageContent() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Phone number</span>
-                  <input className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} required />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]"
+                    value={form.phone}
+                    onChange={(event) => setForm((current) => ({ ...current, phone: formatCanadianPhoneNumber(event.target.value) }))}
+                    placeholder="+1 (204) 555-1234"
+                    required
+                  />
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
@@ -441,10 +481,15 @@ function DriverApplicationFormPageContent() {
                     <input
                       className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]"
                       value={form.address}
-                      onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
+                      onChange={(event) => {
+                        setSelectedAddressId("");
+                        setForm((current) => ({ ...current, address: event.target.value, city: "", postalCode: "" }));
+                      }}
                       onBlur={() => {
                         window.setTimeout(() => setAddressSuggestions([]), 150);
                       }}
+                      placeholder="Start typing your home address"
+                      autoComplete="street-address"
                       required
                     />
                     {mapboxToken && (addressSearching || addressSuggestions.length > 0) ? (
@@ -470,7 +515,7 @@ function DriverApplicationFormPageContent() {
                   </div>
                   {mapboxToken ? (
                     <span className="mt-2 block text-xs text-slate-500">
-                      Select a suggested address from the list if available, or enter your address manually, no data is stored until you submit your application.
+                      Select your address from the suggestions above. Auto fill your city and let the driver fill the postal code.
                     </span>
                   ) : null}
                 </label>
@@ -480,7 +525,17 @@ function DriverApplicationFormPageContent() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Postal code</span>
-                  <input className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.postalCode} onChange={(event) => setForm((current) => ({ ...current, postalCode: event.target.value }))} required />
+                  <input
+                    className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 uppercase outline-none transition focus:border-[#2563EB]"
+                    value={form.postalCode}
+                    onChange={(event) => setForm((current) => ({ ...current, postalCode: formatCanadianPostalCode(event.target.value) }))}
+                    placeholder="R3X 0R3"
+                    autoComplete="postal-code"
+                    maxLength={7}
+                    pattern="[A-Za-z][0-9][A-Za-z] [0-9][A-Za-z][0-9]"
+                    title="Enter a Canadian postal code, for example R3X 0R3."
+                    required
+                  />
                 </label>
               </div>
 
@@ -491,7 +546,19 @@ function DriverApplicationFormPageContent() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Province of issue</span>
-                  <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.provinceOfIssue} onChange={(event) => setForm((current) => ({ ...current, provinceOfIssue: event.target.value }))}>
+                  <select
+                    required
+                    className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 outline-none transition focus:border-[#2563EB]"
+                    value={form.provinceOfIssue}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        provinceOfIssue: event.target.value,
+                        licenseClass: ""
+                      }))
+                    }
+                  >
+                    <option value="">Select province or territory</option>
                     {provincesAndTerritories.map((item) => (
                       <option key={item} value={item}>
                         {item}
@@ -501,10 +568,20 @@ function DriverApplicationFormPageContent() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">License class</span>
-                  <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.licenseClass} onChange={(event) => setForm((current) => ({ ...current, licenseClass: event.target.value }))}>
-                    <option value="G">G</option>
-                    <option value="G2">G2</option>
-                    <option value="Other">Other</option>
+                  <select
+                    required
+                    disabled={!form.provinceOfIssue}
+                    className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 outline-none transition focus:border-[#2563EB] disabled:cursor-not-allowed disabled:bg-slate-100"
+                    value={form.licenseClass}
+                    onChange={(event) => setForm((current) => ({ ...current, licenseClass: event.target.value }))}
+                  >
+                    <option value="">{form.provinceOfIssue ? "Select licence class" : "Select province first"}</option>
+                    {form.provinceOfIssue &&
+                      licenceClassesByJurisdiction[form.provinceOfIssue as (typeof provincesAndTerritories)[number]].map((licenceClass) => (
+                        <option key={licenceClass} value={licenceClass}>
+                          {licenceClass}
+                        </option>
+                      ))}
                   </select>
                 </label>
                 <label className="block">
@@ -514,7 +591,7 @@ function DriverApplicationFormPageContent() {
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Driving experience</span>
                   <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.experienceBand} onChange={(event) => setForm((current) => ({ ...current, experienceBand: event.target.value }))}>
-                    <option value="1-2">1-2 years</option>
+                    <option value="2-3">2-3 years</option>
                     <option value="3-5">3-5 years</option>
                     <option value="5-10">5-10 years</option>
                     <option value="10+">10+ years</option>
@@ -522,7 +599,8 @@ function DriverApplicationFormPageContent() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Preferred service province/territory</span>
-                  <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.serviceProvince} onChange={(event) => setForm((current) => ({ ...current, serviceProvince: event.target.value }))}>
+                  <select required className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.serviceProvince} onChange={(event) => setForm((current) => ({ ...current, serviceProvince: event.target.value }))}>
+                    <option value="">Select province or territory</option>
                     {provincesAndTerritories.map((item) => (
                       <option key={item} value={item}>
                         {item}
@@ -838,9 +916,6 @@ function DriverApplicationFormPageContent() {
 
               <div className="rounded-2xl border border-[#E5E7EB] p-5">
                 <div className="text-sm font-medium text-slate-700">Required documents</div>
-                <p className="mt-2 text-sm text-slate-500">
-                  Upload the required files from your computer or mobile phone.
-                </p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   {documentUploadFields.map(({ label, key, required }) => {
                     const file = uploadedFiles[key];
@@ -861,7 +936,13 @@ function DriverApplicationFormPageContent() {
                           }
                         />
                         <span className="mt-2 block text-xs text-slate-500">
-                          {file ? `Selected: ${file.name}` : required ? "Required upload" : "Optional upload"}
+                          {file
+                            ? `Selected: ${file.name}`
+                            : key === "proofOfInsurance"
+                              ? "Please upload the insurance page showing your liability coverage."
+                              : required
+                                ? "Required upload"
+                                : "Optional upload"}
                         </span>
                       </label>
                     );
@@ -929,16 +1010,13 @@ function DriverApplicationFormPageContent() {
 
               {error ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
-              <div className="flex items-center justify-between border-t border-[#EEF0F4] pt-4">
-                <p className="text-sm text-slate-500">
-                  Your completed application will be submitted to ChaufX & other partners for evaluation and approval.
-                </p>
+              <div className="flex justify-end border-t border-[#EEF0F4] pt-4">
                 <button
                   type="submit"
                   disabled={loading || !form.verificationToken}
                   className="rounded-2xl bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_-18px_rgba(37,99,235,0.55)] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Submitting..." : "Submit application"}
+                  {loading ? "Submitting..." : "Proceed"}
                 </button>
               </div>
             </form>
@@ -955,14 +1033,11 @@ export default function DriverApplicationFormPage() {
       fallback={
         <PublicPageShell
           heroTitle="Driver application form"
-          heroCopy="Complete the detailed ChaufX driver application form. Your finished submission is routed directly to the admin review module."
         >
           <section className="bg-white">
             <div className="mx-auto max-w-6xl px-5 py-12 md:px-8">
               <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
-                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4338CA]">Detailed onboarding</div>
-                <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">Loading your application form.</h1>
-                <p className="mt-4 text-sm leading-7 text-slate-600">Please wait while we prepare your onboarding details.</p>
+                <h1 className="text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">Loading application form</h1>
               </div>
             </div>
           </section>
