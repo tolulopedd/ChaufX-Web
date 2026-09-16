@@ -7,6 +7,8 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { fetchApplicationStatus } from "../../../lib/api";
 
+const tritonDriverAbstractEnglishUrl = "https://secure.tritoncanada.ca/Eiv/InitiateEiv?id=3053c519-8fa3-e878-6f61-e1d2831a1543&language=en";
+
 function StatusPageContent() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
@@ -36,7 +38,11 @@ function StatusPageContent() {
         ? "Approved"
         : result?.status === "REJECTED"
           ? "Application update"
-          : result?.status ?? "";
+          : result?.criminalCheckInvitedAt
+            ? "Criminal record verification in progress"
+            : result?.driverAbstractInitiatedAt
+              ? "Driver abstract verification in progress"
+              : result?.status ?? "";
 
   const statusMessage =
     result?.status === "UNDER_REVIEW" && result?.reviewNote
@@ -45,7 +51,11 @@ function StatusPageContent() {
         ? "Your application has been approved. You can now sign in to your ChaufX driver account."
         : result?.status === "REJECTED"
           ? "There is an important update on your application. Please review the note below."
-          : "Your application is being reviewed by our team.";
+          : result?.criminalCheckInvitedAt
+            ? "Check your email for the criminal record verification link."
+            : result?.driverAbstractInitiatedAt
+              ? "Complete your driver abstract verification before ChaufX can continue the review."
+              : "Your application is being reviewed by our team.";
 
   return (
     <main className="min-h-screen bg-[#F6F8FC] px-5 py-10">
@@ -95,12 +105,27 @@ function StatusPageContent() {
               <div className="mt-5 text-sm text-slate-600">
                 Preferred coverage: {result.preferredServiceAreas.join(", ")} · Documents on file: {result.documents.length}
               </div>
-              <div className="mt-3 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4">
+                <div className="mt-3 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4">
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Application update</div>
                 <div className="mt-2 text-sm text-slate-600">{statusMessage}</div>
                 <div className="mt-3 text-sm font-medium text-slate-800">
-                  {result.reviewNote ? `Review note: ${result.reviewNote}` : "No additional note is available at this time."}
+                  {result.backgroundCheckComment
+                    ? `Background check note: ${result.backgroundCheckComment}`
+                    : result.reviewNote
+                      ? `Review note: ${result.reviewNote}`
+                      : "No additional note is available at this time."}
                 </div>
+
+              {result.driverAbstractInitiatedAt && !result.criminalCheckInvitedAt && result.status !== "APPROVED" && result.status !== "REJECTED" ? (
+                <a
+                  href={tritonDriverAbstractEnglishUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 inline-flex rounded-xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Continue driver abstract verification
+                </a>
+              ) : null}
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">

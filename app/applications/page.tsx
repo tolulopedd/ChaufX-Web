@@ -80,7 +80,7 @@ export default function ApplicationsPage() {
   const [notice, setNotice] = useState("");
   const [reviewAction, setReviewAction] = useState<{
     applicationId: string;
-    decision: "approved" | "rejected" | "additional_info";
+    decision: "approved" | "rejected" | "additional_info" | "criminal_check";
     title: string;
     prompt: string;
   } | null>(null);
@@ -113,6 +113,7 @@ export default function ApplicationsPage() {
   );
   const reviewLocked =
     selectedApplication?.status === "APPROVED" || selectedApplication?.status === "REJECTED";
+  const criminalCheckSent = Boolean(selectedApplication?.criminalCheckInvitedAt);
 
   const submittedCount = data.filter((application) => application.status === "SUBMITTED").length;
   const underReviewCount = data.filter((application) => application.status === "UNDER_REVIEW").length;
@@ -136,6 +137,21 @@ export default function ApplicationsPage() {
             ? "Application rejected successfully."
             : "Additional information request sent successfully."
       );
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function sendCriminalCheck(applicationId: string, comment: string) {
+    setBusyId(applicationId);
+
+    try {
+      await adminFetch(`/admin/applications/${applicationId}/background-check`, {
+        method: "POST",
+        body: JSON.stringify({ comment })
+      });
+      await reload();
+      setNotice("Criminal record verification invitation sent successfully.");
     } finally {
       setBusyId("");
     }
@@ -231,6 +247,23 @@ export default function ApplicationsPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  disabled={busyId === selectedApplication.id || reviewLocked || criminalCheckSent}
+                  onClick={() => {
+                    setReviewAction({
+                      applicationId: selectedApplication.id,
+                      decision: "criminal_check",
+                      title: "Confirm driver abstract",
+                      prompt: "Add the outcome and any relevant comments from the driver’s abstract check. Once this step is completed, ChaufX will email the driver a Background Check verification link to proceed with the next stage of the verification process."
+                    });
+                    setReviewNote("");
+                    setNotice("");
+                  }}
+                  className={adminSecondaryButtonClass}
+                >
+                  Send criminal check
+                </button>
+                <button
+                  type="button"
                   disabled={busyId === selectedApplication.id || reviewLocked}
                   onClick={() => {
                     setReviewAction({
@@ -311,6 +344,15 @@ export default function ApplicationsPage() {
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Submitted</div>
                 <div className="mt-2 text-sm font-semibold text-slate-950">{formatDate(selectedApplication.createdAt)}</div>
               </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4">
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Background check</div>
+              <div className="mt-2 text-sm font-semibold text-slate-950">
+                {selectedApplication.criminalCheckInvitedAt ? "Criminal record verification invitation sent" : "Driver abstract verification pending"}
+              </div>
+              {selectedApplication.backgroundCheckComment ? <div className="mt-2 text-sm text-slate-600">{selectedApplication.backgroundCheckComment}</div> : null}
+              {selectedApplication.criminalCheckInvitedAt ? <div className="mt-2 text-xs text-slate-500">Sent {formatDate(selectedApplication.criminalCheckInvitedAt)}</div> : null}
             </div>
 
             <div className="mt-4 space-y-4">
@@ -467,7 +509,11 @@ export default function ApplicationsPage() {
                 disabled={!reviewNote.trim() || busyId === reviewAction.applicationId}
                 onClick={async () => {
                   try {
-                    await review(reviewAction.applicationId, reviewAction.decision, reviewNote.trim());
+                    if (reviewAction.decision === "criminal_check") {
+                      await sendCriminalCheck(reviewAction.applicationId, reviewNote.trim());
+                    } else {
+                      await review(reviewAction.applicationId, reviewAction.decision, reviewNote.trim());
+                    }
                     setReviewAction(null);
                     setReviewNote("");
                   } catch (reason) {
@@ -476,7 +522,11 @@ export default function ApplicationsPage() {
                 }}
                 className={adminPrimaryButtonClass}
               >
-                {busyId === reviewAction.applicationId ? "Sending..." : "Send update"}
+                {busyId === reviewAction.applicationId
+                  ? "Sending..."
+                  : reviewAction.decision === "criminal_check"
+                    ? "Send the link"
+                    : "Send update"}
               </button>
             </div>
           </div>
