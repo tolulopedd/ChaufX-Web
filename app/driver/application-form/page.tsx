@@ -3,7 +3,7 @@
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PublicPageShell } from "../../../components/public-page-shell";
-import { driverApply } from "../../../lib/api";
+import { driverApply, fetchDriverApplicationUpdate } from "../../../lib/api";
 
 const provincesAndTerritories = [
   "Alberta",
@@ -70,6 +70,23 @@ function formatCanadianPostalCode(value: string) {
   return characters.length > 3 ? `${characters.slice(0, 3)} ${characters.slice(3)}` : characters;
 }
 
+function scheduleValue(schedule: string | null | undefined, label: string) {
+  const line = String(schedule ?? "").split("\n").find((item) => item.startsWith(`${label}:`));
+  return line ? line.slice(label.length + 1).trim() : "";
+}
+
+function scheduleList(schedule: string | null | undefined, label: string) {
+  const value = scheduleValue(schedule, label);
+  return value && value !== "Not provided" ? value.split(", ").filter(Boolean) : [];
+}
+
+function experienceBandForYears(years: number) {
+  if (years >= 10) return "10+";
+  if (years >= 5) return "5-10";
+  if (years >= 3) return "3-5";
+  return "2-3";
+}
+
 type DocumentUploadKey =
   | "driverLicenseFront"
   | "driverLicenseBack"
@@ -103,6 +120,15 @@ const documentUploadFields: Array<{
   { label: "Proof of Work Authorization (For Canadian temporary residents)", key: "workAuthorization", required: false },
   { label: "First Aid / CPR / PSW / Health or emergency training certificate", key: "healthTrainingCertificate", required: false }
 ];
+
+const documentFileLabels: Record<DocumentUploadKey, string> = {
+  driverLicenseFront: "Driver license - front",
+  driverLicenseBack: "Driver license - back",
+  proofOfInsurance: "Proof of insurance",
+  workAuthorization: "Proof of work authorization",
+  healthTrainingCertificate: "Health or emergency training certificate",
+  signature: "Signature"
+};
 
 async function fileToDataUrl(file: File) {
   return await new Promise<string>((resolve, reject) => {
@@ -183,7 +209,20 @@ function DriverApplicationFormPageContent() {
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [addressSearching, setAddressSearching] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState("");
-  const verified = searchParams.get("verified") === "1";
+  const [updateLoading, setUpdateLoading] = useState(false);
+  const [applicationUpdateReady, setApplicationUpdateReady] = useState(false);
+  const [adminComment, setAdminComment] = useState("");
+  const [existingDocuments, setExistingDocuments] = useState<Array<{ id: string; fileName: string; type: string }>>([]);
+  const [replaceDocumentIds, setReplaceDocumentIds] = useState<Record<DocumentUploadKey, string | null>>({
+    driverLicenseFront: null,
+    driverLicenseBack: null,
+    proofOfInsurance: null,
+    workAuthorization: null,
+    healthTrainingCertificate: null,
+    signature: null
+  });
+  const [additionalReplacementFiles, setAdditionalReplacementFiles] = useState<Record<string, File | null>>({});
+  const applicationUpdateToken = searchParams.get("updateToken") ?? "";
   const suppressAddressSearchRef = useRef(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<DocumentUploadKey, File | null>>({
     driverLicenseFront: null,
@@ -237,9 +276,87 @@ function DriverApplicationFormPageContent() {
     identityConsent: true,
     professionalStandards: true,
     signatureName: "",
+    applicantResponse: "",
     applicationDate: new Date().toISOString().slice(0, 10),
     serviceProvince: ""
   });
+
+  useEffect(() => {
+    if (!applicationUpdateToken) {
+      setApplicationUpdateReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    setUpdateLoading(true);
+    setApplicationUpdateReady(false);
+    setError("");
+
+    void fetchDriverApplicationUpdate(applicationUpdateToken)
+      .then((application) => {
+        if (cancelled) return;
+
+        const [firstName = "", ...lastNameParts] = application.fullName.trim().split(/\s+/);
+        const addressParts = application.address.split(",").map((item) => item.trim()).filter(Boolean);
+        const postalCode = addressParts.at(-1) ?? "";
+        const city = addressParts.length >= 2 ? addressParts.at(-2) ?? "" : "";
+        const address = addressParts.length >= 3 ? addressParts.slice(0, -2).join(", ") : application.address;
+        const schedule = application.availabilitySchedule;
+        const cityPostal = scheduleValue(schedule, "City / postal code").split("/").map((item) => item.trim());
+        const previousEmployer = scheduleValue(schedule, "Previous employer");
+        const employerParts = previousEmployer && previousEmployer !== "No" ? previousEmployer.split(" | ") : [];
+
+        setSelectedAddressId("saved-application-address");
+        setAdminComment(application.reviewNote ?? "");
+        setExistingDocuments(application.documents);
+        setApplicationUpdateReady(true);
+        setForm((current) => ({
+          ...current,
+          firstName,
+          lastName: lastNameParts.join(" "),
+          phone: formatCanadianPhoneNumber(application.phone),
+          email: application.email,
+          address,
+          city: cityPostal[0] && cityPostal[0] !== "Not provided" ? cityPostal[0] : city,
+          postalCode: formatCanadianPostalCode(cityPostal[1] && cityPostal[1] !== "Not provided" ? cityPostal[1] : postalCode),
+          dateOfBirth: scheduleValue(schedule, "Date of birth") === "Not provided" ? "" : scheduleValue(schedule, "Date of birth"),
+          workAuthorized: scheduleValue(schedule, "Legally authorized to work in Canada") || current.workAuthorized,
+          licenseNumber: application.licenseNumber,
+          provinceOfIssue: scheduleValue(schedule, "Province of issue"),
+          licenseClass: scheduleValue(schedule, "License class"),
+          licenseExpiryDate: scheduleValue(schedule, "License expiry date") === "Not provided" ? "" : scheduleValue(schedule, "License expiry date"),
+          experienceBand: experienceBandForYears(application.yearsOfExperience),
+          trafficViolations: scheduleValue(schedule, "Traffic violations") === "No" ? "no" : "yes",
+          trafficViolationsNotes: scheduleValue(schedule, "Traffic violations") === "No" ? "" : scheduleValue(schedule, "Traffic violations"),
+          licenseSuspensions: scheduleValue(schedule, "License suspensions") === "No" ? "no" : "yes",
+          licenseSuspensionsNotes: scheduleValue(schedule, "License suspensions") === "No" ? "" : scheduleValue(schedule, "License suspensions"),
+          atFaultAccidents: scheduleValue(schedule, "At-fault accidents") === "No" ? "no" : "yes",
+          atFaultAccidentsNotes: scheduleValue(schedule, "At-fault accidents") === "No" ? "" : scheduleValue(schedule, "At-fault accidents"),
+          duiHistory: scheduleValue(schedule, "DUI / impaired driving") === "No" ? "no" : "yes",
+          duiHistoryNotes: scheduleValue(schedule, "DUI / impaired driving") === "No" ? "" : scheduleValue(schedule, "DUI / impaired driving"),
+          professionalExperience: scheduleList(schedule, "Professional experience"),
+          previousEmployer: employerParts.length ? "yes" : "no",
+          employerName: employerParts[0] === "Not provided" ? "" : employerParts[0] ?? "",
+          employerRole: employerParts[1] === "Not provided" ? "" : employerParts[1] ?? "",
+          preferredWorkingHours: scheduleList(schedule, "Preferred working hours"),
+          weeklyAvailability: scheduleValue(schedule, "Availability per week") || current.weeklyAvailability,
+          serviceCapability: scheduleList(schedule, "Service capability"),
+          ownVehicle: scheduleValue(schedule, "Owns a vehicle") || current.ownVehicle,
+          signatureName: scheduleValue(schedule, "Signature").startsWith("Uploaded -") ? "" : scheduleValue(schedule, "Signature"),
+          serviceProvince: application.preferredServiceAreas[0] ?? ""
+        }));
+      })
+      .catch((reason) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : "Unable to load application update.");
+      })
+      .finally(() => {
+        if (!cancelled) setUpdateLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationUpdateToken]);
 
   const professionalExperienceOptions = useMemo(
     () => ["None", "Chauffeur Service", "Ride-share driving", "Delivery driving", "Corporate driving", "Customer service roles"],
@@ -307,10 +424,33 @@ function DriverApplicationFormPageContent() {
     setAddressSuggestions([]);
   }
 
+  function existingDocumentFor(key: DocumentUploadKey) {
+    const label = documentFileLabels[key];
+    return existingDocuments.find((document) => document.fileName.startsWith(`${label} - `));
+  }
+
+  function selectDocument(key: DocumentUploadKey, file: File | null) {
+    setUploadedFiles((current) => ({ ...current, [key]: file }));
+    setReplaceDocumentIds((current) => ({
+      ...current,
+      [key]: file ? existingDocumentFor(key)?.id ?? null : null
+    }));
+  }
+
+  const unmatchedExistingDocuments = existingDocuments.filter(
+    (document) => !Object.values(documentFileLabels).some((label) => document.fileName.startsWith(`${label} - `))
+  );
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
     setError("");
+
+    if (applicationUpdateToken && !applicationUpdateReady) {
+      setError("This application update link is invalid or has expired.");
+      setLoading(false);
+      return;
+    }
 
     if (mapboxToken && !selectedAddressId) {
       setError("Select your home address from the Mapbox suggestions.");
@@ -320,19 +460,19 @@ function DriverApplicationFormPageContent() {
 
     const missingDocuments = requiredUploadFields.filter((key) => !uploadedFiles[key]);
 
-    if (missingDocuments.length > 0) {
+    if (!applicationUpdateToken && missingDocuments.length > 0) {
       setError("Please upload all required documents before submitting your application.");
       setLoading(false);
       return;
     }
 
-    if (!uploadedFiles.signature && !form.signatureName.trim()) {
+    if (!applicationUpdateToken && !uploadedFiles.signature && !form.signatureName.trim()) {
       setError("Please upload your signature or type your full name as your signature before submitting.");
       setLoading(false);
       return;
     }
 
-    if (form.healthEmergencyTraining === "yes" && !uploadedFiles.healthTrainingCertificate) {
+    if (!applicationUpdateToken && form.healthEmergencyTraining === "yes" && !uploadedFiles.healthTrainingCertificate) {
       setError("Please upload your training certificate before submitting your application.");
       setLoading(false);
       return;
@@ -372,6 +512,9 @@ function DriverApplicationFormPageContent() {
     ].join("\n");
 
     try {
+      const additionalDocuments = Object.entries(additionalReplacementFiles).flatMap(([documentId, file]) =>
+        file ? [{ documentId, file }] : []
+      );
       const documents = await Promise.all(
         [
           ["DRIVER_LICENSE", "Driver license - front", uploadedFiles.driverLicenseFront],
@@ -392,10 +535,26 @@ function DriverApplicationFormPageContent() {
               mimeType: uploadedFile.type || undefined
             };
           })
+          .concat(
+            additionalDocuments.map(async ({ documentId, file }) => {
+                const original = existingDocuments.find((document) => document.id === documentId);
+                if (!original) {
+                  throw new Error("The selected document is no longer available.");
+                }
+
+                return {
+                  type: original.type,
+                  fileName: `Replacement for ${original.fileName} - ${file.name}`,
+                  fileUrl: await fileToDataUrl(file),
+                  mimeType: file.type || undefined
+                };
+              })
+          )
       );
 
       await driverApply({
-        verificationToken: form.verificationToken,
+        verificationToken: applicationUpdateToken ? undefined : form.verificationToken,
+        applicationUpdateToken: applicationUpdateToken || undefined,
         fullName: `${form.firstName} ${form.lastName}`.trim(),
         phone: form.phone,
         email: form.email,
@@ -405,10 +564,17 @@ function DriverApplicationFormPageContent() {
         emergencyContact: `${form.signatureName || "Applicant"} | ${form.phone}`,
         preferredServiceAreas: [form.serviceProvince],
         availabilitySchedule: notes,
+        applicantResponse: applicationUpdateToken ? form.applicantResponse : undefined,
+        replaceDocumentIds: applicationUpdateToken
+          ? [
+              ...Object.values(replaceDocumentIds).filter((documentId): documentId is string => Boolean(documentId)),
+              ...additionalDocuments.map(({ documentId }) => documentId)
+            ]
+          : undefined,
         documents
       });
 
-      router.push(`/driver/background-check?email=${encodeURIComponent(form.email)}`);
+      router.push(applicationUpdateToken ? `/driver/status?email=${encodeURIComponent(form.email)}` : `/driver/background-check?email=${encodeURIComponent(form.email)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to submit application");
     } finally {
@@ -425,15 +591,16 @@ function DriverApplicationFormPageContent() {
           <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
             <div>
               <h1 className="text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">Complete your driver application</h1>
-              {verified ? (
-                <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  Email verified.
-                </p>
-              ) : null}
-              {!form.verificationToken ? (
+              {!applicationUpdateToken && !form.verificationToken ? (
                 <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
                   Please verify your email from the link we sent before completing this application.
                 </p>
+              ) : null}
+              {applicationUpdateToken ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <div className="font-semibold">Admin comment</div>
+                  <p className="mt-1 whitespace-pre-wrap">{adminComment || "Please provide the requested update."}</p>
+                </div>
               ) : null}
             </div>
 
@@ -462,7 +629,14 @@ function DriverApplicationFormPageContent() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
-                  <input type="email" className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} required />
+                  <input
+                    type="email"
+                    className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB] disabled:cursor-not-allowed disabled:bg-slate-50"
+                    value={form.email}
+                    onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                    disabled={Boolean(applicationUpdateToken)}
+                    required
+                  />
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Date of birth</span>
@@ -895,10 +1069,7 @@ function DriverApplicationFormPageContent() {
                       accept={uploadAccept}
                       className="block w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-xl file:border-0 file:bg-[#EEF2FF] file:px-4 file:py-2 file:font-medium file:text-[#4338CA]"
                       onChange={(event) =>
-                        setUploadedFiles((current) => ({
-                          ...current,
-                          healthTrainingCertificate: event.target.files?.[0] ?? null
-                        }))
+                        selectDocument("healthTrainingCertificate", event.target.files?.[0] ?? null)
                       }
                     />
                     <span className="mt-2 block text-xs text-slate-500">
@@ -926,18 +1097,15 @@ function DriverApplicationFormPageContent() {
                         <input
                           type="file"
                           accept={uploadAccept}
-                          required={required as boolean}
+                          required={!applicationUpdateToken && (required as boolean)}
                           className="block w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-xl file:border-0 file:bg-[#EEF2FF] file:px-4 file:py-2 file:font-medium file:text-[#4338CA]"
-                          onChange={(event) =>
-                            setUploadedFiles((current) => ({
-                              ...current,
-                              [key]: event.target.files?.[0] ?? null
-                            }))
-                          }
+                          onChange={(event) => selectDocument(key, event.target.files?.[0] ?? null)}
                         />
                         <span className="mt-2 block text-xs text-slate-500">
                           {file
                             ? `Selected: ${file.name}`
+                            : applicationUpdateToken && existingDocumentFor(key)
+                              ? `Current: ${existingDocumentFor(key)!.fileName}`
                             : key === "proofOfInsurance"
                               ? "Please upload the insurance page showing your liability coverage."
                               : required
@@ -948,6 +1116,32 @@ function DriverApplicationFormPageContent() {
                     );
                   })}
                 </div>
+                {applicationUpdateToken && unmatchedExistingDocuments.length > 0 ? (
+                  <div className="mt-5 space-y-3 border-t border-[#EEF2FF] pt-5">
+                    <div className="text-sm font-medium text-slate-700">Other uploaded documents</div>
+                    {unmatchedExistingDocuments.map((document) => (
+                      <label key={document.id} className="block rounded-2xl border border-[#E5E7EB] p-4">
+                        <span className="block text-sm font-medium text-slate-700">{document.fileName}</span>
+                        <input
+                          type="file"
+                          accept={uploadAccept}
+                          className="mt-3 block w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-xl file:border-0 file:bg-[#EEF2FF] file:px-4 file:py-2 file:font-medium file:text-[#4338CA]"
+                          onChange={(event) =>
+                            setAdditionalReplacementFiles((current) => ({
+                              ...current,
+                              [document.id]: event.target.files?.[0] ?? null
+                            }))
+                          }
+                        />
+                        <span className="mt-2 block text-xs text-slate-500">
+                          {additionalReplacementFiles[document.id]
+                            ? `Selected: ${additionalReplacementFiles[document.id]!.name}`
+                            : null}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -986,15 +1180,14 @@ function DriverApplicationFormPageContent() {
                       type="file"
                       accept={uploadAccept}
                       className="block w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-xl file:border-0 file:bg-[#EEF2FF] file:px-4 file:py-2 file:font-medium file:text-[#4338CA]"
-                      onChange={(event) =>
-                        setUploadedFiles((current) => ({
-                          ...current,
-                          signature: event.target.files?.[0] ?? null
-                        }))
-                      }
+                      onChange={(event) => selectDocument("signature", event.target.files?.[0] ?? null)}
                     />
                     <span className="mt-2 block text-xs text-slate-500">
-                      {uploadedFiles.signature ? `Selected: ${uploadedFiles.signature.name}` : "Upload your signature, or type your full name below."}
+                      {uploadedFiles.signature
+                        ? `Selected: ${uploadedFiles.signature.name}`
+                        : applicationUpdateToken && existingDocumentFor("signature")
+                          ? `Current: ${existingDocumentFor("signature")!.fileName}`
+                          : "Upload your signature, or type your full name below."}
                     </span>
                   </label>
                   <label className="block">
@@ -1008,15 +1201,28 @@ function DriverApplicationFormPageContent() {
                 </div>
               </div>
 
+              {applicationUpdateToken ? (
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Your response to the admin comment</span>
+                  <textarea
+                    required
+                    rows={5}
+                    className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-3 outline-none transition focus:border-[#2563EB]"
+                    value={form.applicantResponse ?? ""}
+                    onChange={(event) => setForm((current) => ({ ...current, applicantResponse: event.target.value }))}
+                  />
+                </label>
+              ) : null}
+
               {error ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
               <div className="flex justify-end border-t border-[#EEF0F4] pt-4">
                 <button
                   type="submit"
-                  disabled={loading || !form.verificationToken}
+                  disabled={loading || updateLoading || (applicationUpdateToken ? !applicationUpdateReady : !form.verificationToken)}
                   className="rounded-2xl bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_-18px_rgba(37,99,235,0.55)] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Submitting..." : "Proceed"}
+                  {loading ? "Submitting..." : applicationUpdateToken ? "Resubmit application" : "Proceed"}
                 </button>
               </div>
             </form>
@@ -1037,7 +1243,6 @@ export default function DriverApplicationFormPage() {
           <section className="bg-white">
             <div className="mx-auto max-w-6xl px-5 py-12 md:px-8">
               <div className="rounded-[30px] border border-[#E5E7EB] bg-white p-7 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
-                <h1 className="text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">Loading application form</h1>
               </div>
             </div>
           </section>
