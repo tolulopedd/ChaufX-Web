@@ -307,6 +307,30 @@ export async function driverApply(payload: unknown) {
   return data;
 }
 
+export async function fetchDriverApplicationUpdate(token: string) {
+  const response = await fetch(`${API_BASE}/driver-onboarding/application-update?token=${encodeURIComponent(token)}`, {
+    cache: "no-store"
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message ?? "Unable to load application update");
+  }
+
+  return data as {
+    fullName: string;
+    phone: string;
+    email: string;
+    address: string;
+    licenseNumber: string;
+    yearsOfExperience: number;
+    preferredServiceAreas: string[];
+    availabilitySchedule: string | null;
+    reviewNote: string | null;
+    documents: Array<{ id: string; fileName: string; type: string }>;
+  };
+}
+
 export async function fetchApplicationStatus(email: string) {
   const response = await fetch(`${API_BASE}/driver-onboarding/status?email=${encodeURIComponent(email)}`, {
     cache: "no-store"
