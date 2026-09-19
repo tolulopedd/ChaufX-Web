@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ComponentType, ReactNode } from "react";
+import { ComponentType, ReactNode, useEffect, useState } from "react";
 import { AdminBrand } from "./admin-brand";
 import {
   ApplicationsIcon,
@@ -11,6 +11,7 @@ import {
   DashboardIcon,
   DriversIcon,
   MessagesIcon,
+  MembershipIcon,
   ReportsIcon,
   SettlementsIcon,
   SettingsIcon,
@@ -18,7 +19,7 @@ import {
   TripsIcon,
   UsersIcon
 } from "./admin-icons";
-import { clearStoredToken, clearStoredWebRole, getStoredToken, getStoredWebRole } from "../lib/api";
+import { clearStoredToken, clearStoredWebRole, getStoredWebRole } from "../lib/api";
 
 type AdminRole = "admin" | "marketing";
 type NavItem = {
@@ -57,6 +58,7 @@ const navSections: NavSection[] = [
   {
     title: "Finance",
     items: [
+      { href: "/memberships", label: "Memberships", icon: MembershipIcon, roles: ["admin"] },
       { href: "/settlements", label: "Settlements", icon: SettlementsIcon, roles: ["admin"] },
       { href: "/reports", label: "Reports", icon: ReportsIcon, roles: ["admin"] }
     ]
@@ -82,8 +84,14 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const token = getStoredToken();
-  const role = (getStoredWebRole() as AdminRole | null) ?? "admin";
+  const [role, setRole] = useState<AdminRole>("admin");
+
+  useEffect(() => {
+    const storedRole = getStoredWebRole() as AdminRole | "";
+    if (storedRole === "admin" || storedRole === "marketing") {
+      setRole(storedRole);
+    }
+  }, []);
   const visibleNavSections = navSections
     .map((section) => ({
       ...section,
@@ -138,6 +146,7 @@ export function AdminShell({
             onClick={() => {
               clearStoredToken();
               clearStoredWebRole();
+              setRole("admin");
               router.push("/login");
             }}
           >
@@ -145,7 +154,6 @@ export function AdminShell({
             Sign out
           </button>
 
-          {!token ? <p className="mt-3 text-xs text-amber-600">No token stored yet. Sign in to make live admin changes.</p> : null}
         </aside>
 
         <main className="space-y-4 bg-[#F7F8FB] px-4 py-4">

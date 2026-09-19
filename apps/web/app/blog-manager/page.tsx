@@ -517,7 +517,7 @@ export default function BlogManagerPage() {
 
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button type="button" className={adminPrimaryButtonClass} onClick={handleSave} disabled={saving}>
-                {saving ? "Saving..." : selectedPost ? "Save changes" : "Create article"}
+                {saving ? "Saving..." : selectedPost ? "Save" : "Create article"}
               </button>
               {selectedPost ? (
                 <button type="button" className={adminGhostButtonClass} onClick={handleDelete} disabled={saving}>

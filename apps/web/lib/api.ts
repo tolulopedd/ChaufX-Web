@@ -393,7 +393,7 @@ export async function customerFetch<T>(path: string, options?: RequestInit): Pro
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       handleCustomerAuthFailure();
       throw new Error("Session expired. Redirecting to login...");
     }

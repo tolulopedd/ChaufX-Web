@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toCurrency } from "../../../lib/config";
 import { EmptyState, StatCard, StatusPill, adminTableCellClass, adminTableHeadClass } from "../../../components/admin-primitives";
+import {
+  DashboardIcon,
+  ReportsIcon,
+  SettlementsIcon,
+  SignOutIcon,
+  TripsIcon
+} from "../../../components/admin-icons";
 import { clearStoredDriverToken, fetchDriverProfile, getStoredDriverToken } from "../../../lib/api";
 
 const statusToneMap: Record<string, "violet" | "amber" | "emerald" | "rose" | "navy" | "neutral"> = {
@@ -270,10 +277,10 @@ export default function DriverLoginPage() {
 
           <nav className="mt-5 space-y-1.5">
             {[
-              { href: "#overview", label: "Overview" },
-              { href: "#current-rides", label: "Current rides" },
-              { href: "#settlements", label: "Settlements" },
-              { href: "#history", label: "Ride history" }
+              { href: "#overview", label: "Overview", icon: DashboardIcon },
+              { href: "#current-rides", label: "Current rides", icon: TripsIcon },
+              { href: "#settlements", label: "Settlements", icon: SettlementsIcon },
+              { href: "#history", label: "Ride history", icon: ReportsIcon }
             ].map((item) => (
               <a
                 key={item.href}
@@ -284,7 +291,10 @@ export default function DriverLoginPage() {
                     : "text-slate-600 hover:bg-[#F3F4F6] hover:text-[#0F172A]"
                 }`}
               >
-                <span>{item.label}</span>
+                <span className="flex items-center gap-3">
+                  <item.icon className="h-4.5 w-4.5" />
+                  {item.label}
+                </span>
               </a>
             ))}
           </nav>
@@ -297,6 +307,7 @@ export default function DriverLoginPage() {
               router.push("/login");
             }}
           >
+            <SignOutIcon className="mr-2 h-4.5 w-4.5" />
             Sign out
           </button>
         </aside>

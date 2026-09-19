@@ -24,6 +24,23 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleDateString();
 }
 
+function formatReviewEvent(event?: string) {
+  switch (event) {
+    case "ADDITIONAL_INFORMATION_REQUESTED":
+      return "Additional information requested";
+    case "APPLICATION_RESUBMITTED":
+      return "Driver response";
+    case "APPROVED":
+      return "Application approved";
+    case "REJECTED":
+      return "Application rejected";
+    case "CRIMINAL_CHECK_SENT":
+      return "Criminal check link sent";
+    default:
+      return "Review update";
+  }
+}
+
 function parseApplicationDetails(rawText?: string | null) {
   if (!rawText) {
     return {};
@@ -353,6 +370,25 @@ export default function ApplicationsPage() {
               </div>
               {selectedApplication.backgroundCheckComment ? <div className="mt-2 text-sm text-slate-600">{selectedApplication.backgroundCheckComment}</div> : null}
               {selectedApplication.criminalCheckInvitedAt ? <div className="mt-2 text-xs text-slate-500">Sent {formatDate(selectedApplication.criminalCheckInvitedAt)}</div> : null}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4">
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Review history</div>
+              {selectedApplication.reviewHistory?.length ? (
+                <div className="mt-3 space-y-3">
+                  {selectedApplication.reviewHistory.map((entry: any) => (
+                    <div key={entry.id} className="rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <div className="text-sm font-semibold text-slate-950">{formatReviewEvent(entry.event)}</div>
+                        <div className="text-xs text-slate-500">{entry.author === "DRIVER" ? "Driver" : "Admin"} · {formatDate(entry.createdAt)}</div>
+                      </div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{entry.note}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 text-sm text-slate-500">No review notes yet.</div>
+              )}
             </div>
 
             <div className="mt-4 space-y-4">
