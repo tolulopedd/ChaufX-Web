@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
 import { EmptyState, StatCard, StatusPill, adminTableCellClass, adminTableHeadClass } from "../../components/admin-primitives";
-import { updateSettlementStatus, useAdminResource } from "../../lib/api";
+import { adminFetch, updateSettlementStatus, useAdminResource } from "../../lib/api";
 
 type SettlementTrip = {
   bookingId: string;
@@ -53,6 +53,57 @@ type SettlementPayload = {
   settlements: SettlementRow[];
 };
 
+type MembershipPaymentRow = {
+  id: string;
+  tier: "BASIC" | "PLUS" | "CONCIERGE" | "CORPORATE";
+  billingCycle: "MONTHLY" | "ANNUAL";
+  method: "STRIPE" | "INTERAC";
+  status: "PENDING" | "RECORDED" | "FAILED" | "CANCELLED";
+  amount: number;
+  currency: string;
+  invoiceNumber: string;
+  interacTransferConfirmedAt: string | null;
+  recordedAt: string | null;
+  createdAt: string;
+  user: {
+    fullName: string;
+    email: string;
+    membershipExpiresAt: string | null;
+  };
+};
+
+type MembershipPaymentPayload = {
+  payments: MembershipPaymentRow[];
+};
+
+type BookingInteracPaymentRow = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: "PENDING" | "RECORDED" | "FAILED" | "REFUNDED";
+  providerReference: string | null;
+  interacTransferConfirmedAt: string | null;
+  recordedAt: string | null;
+  createdAt: string;
+  booking: {
+    id: string;
+    status: string;
+    pickupLocation: string;
+    destinationLocation: string;
+    scheduledStartAt: string;
+    customer: {
+      user: {
+        fullName: string;
+        email: string;
+      };
+    };
+  };
+};
+
+type BookingInteracPaymentPayload = {
+  payments: BookingInteracPaymentRow[];
+};
+
 const settlementsFallback: SettlementPayload = {
   settlementConfig: {
     platformSharePercent: 30,
@@ -71,6 +122,9 @@ const settlementsFallback: SettlementPayload = {
   },
   settlements: []
 };
+
+const membershipPaymentsFallback: MembershipPaymentPayload = { payments: [] };
+const bookingInteracPaymentsFallback: BookingInteracPaymentPayload = { payments: [] };
 
 const currencyFormatter = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -102,7 +156,20 @@ function trimDriverName(fullName: string) {
 
 export default function SettlementsPage() {
   const { data, loading, error, reload } = useAdminResource<SettlementPayload>("/admin/settlements", settlementsFallback);
+  const {
+    data: membershipPayments,
+    loading: membershipPaymentsLoading,
+    error: membershipPaymentsError,
+    reload: reloadMembershipPayments
+  } = useAdminResource<MembershipPaymentPayload>("/admin/memberships/payments", membershipPaymentsFallback);
+  const {
+    data: bookingInteracPayments,
+    loading: bookingInteracPaymentsLoading,
+    error: bookingInteracPaymentsError,
+    reload: reloadBookingInteracPayments
+  } = useAdminResource<BookingInteracPaymentPayload>("/admin/payments/interac", bookingInteracPaymentsFallback);
   const [savingId, setSavingId] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"memberships" | "trip-transfers" | "driver-payouts">("memberships");
 
   async function onMarkSettlement(settlement: SettlementRow, status: "PENDING" | "PAID") {
     const payoutReference =
@@ -126,19 +193,209 @@ export default function SettlementsPage() {
     }
   }
 
+  async function confirmInteracPayment(payment: MembershipPaymentRow) {
+    if (!window.confirm(`Confirm ${formatCurrency(payment.amount)} Interac payment for ${payment.user.fullName}?`)) {
+      return;
+    }
+
+    try {
+      setSavingId(payment.id);
+      await adminFetch(`/admin/memberships/${payment.id}/record`, { method: "POST" });
+      await reloadMembershipPayments();
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Unable to confirm the membership payment.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  async function confirmBookingInteracPayment(payment: BookingInteracPaymentRow) {
+    if (!window.confirm(`Confirm ${formatCurrency(payment.amount)} e-transfer for ${payment.booking.customer.user.fullName}?`)) {
+      return;
+    }
+
+    try {
+      setSavingId(payment.id);
+      await adminFetch(`/payments/${payment.booking.id}/record`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount: payment.amount,
+          providerReference: payment.providerReference ?? undefined,
+          notes: "E-transfer confirmed by admin."
+        })
+      });
+      await reloadBookingInteracPayments();
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Unable to confirm the trip payment.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
   return (
-    <AdminShell title="Driver Settlements">
-      <div className="grid gap-4 xl:grid-cols-4">
-        <StatCard title="Weekly settlement rows" value={data.summary.weeklyRows} detail="Weekly driver payout groups." />
-        <StatCard title="Awaiting payout" value={formatCurrency(data.summary.pendingDriverShareAmount)} detail={`${data.summary.pendingRows} weekly payout row${data.summary.pendingRows === 1 ? "" : "s"} pending release.`} />
-        <StatCard title="Paid out" value={formatCurrency(data.summary.paidDriverShareAmount)} detail={`${data.summary.paidRows} weekly payout row${data.summary.paidRows === 1 ? "" : "s"} completed.`} />
-        <StatCard
-          title="Driver payout / platform"
-          value={`${data.settlementConfig.driverSharePercent}% / ${data.settlementConfig.platformSharePercent}%`}
-          detail={`${formatCurrency(data.summary.driverShareAmount)} driver share across ${data.summary.tripCount} completed paid trips.`}
-          tone="dark"
-        />
+    <AdminShell title="Settlements">
+      <div className="flex flex-wrap gap-2">
+        {[
+          ["memberships", "Membership payments"],
+          ["driver-payouts", "Driver payouts"]
+        ].map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab as typeof activeTab)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              activeTab === tab ? "bg-[#2563EB] text-white" : "border border-[#D7DEEF] bg-white text-slate-700 hover:bg-[#F8FAFC]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+
+      {activeTab === "memberships" ? <Panel title="Membership payments">
+        {membershipPaymentsLoading ? <p className="text-sm text-slate-500">Loading membership payments...</p> : null}
+        {membershipPaymentsError ? <p className="text-sm text-amber-600">{membershipPaymentsError}</p> : null}
+
+        {membershipPayments.payments.length ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className={adminTableHeadClass}>
+                  <th className="px-3 py-2">Customer</th>
+                  <th className="px-3 py-2">Plan</th>
+                  <th className="px-3 py-2">Payment</th>
+                  <th className="px-3 py-2">Customer confirmation</th>
+                  <th className="px-3 py-2">Membership expiry</th>
+                  <th className="px-3 py-2 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#EEF2F7]">
+                {membershipPayments.payments.map((payment) => {
+                  return (
+                    <tr key={payment.id} className="align-top text-slate-700">
+                      <td className={`${adminTableCellClass} min-w-[15rem]`}>
+                        <div className="font-semibold text-slate-950">{payment.user.fullName}</div>
+                        <div className="mt-1 text-xs text-slate-500">{payment.user.email}</div>
+                        <div className="mt-1 text-xs text-slate-500">{payment.invoiceNumber}</div>
+                      </td>
+                      <td className={adminTableCellClass}>
+                        <div className="font-medium text-slate-950">{payment.tier}</div>
+                        <div className="mt-1 text-xs text-slate-500">{payment.billingCycle}</div>
+                      </td>
+                      <td className={adminTableCellClass}>
+                        <div className="font-semibold text-slate-950">{formatCurrency(payment.amount)}</div>
+                        <div className="mt-1 text-xs text-slate-500">{payment.method === "INTERAC" ? "E-transfer" : "Stripe"}</div>
+                        <div className="mt-1"><StatusPill label={payment.status} tone={payment.status === "RECORDED" ? "emerald" : payment.status === "PENDING" ? "amber" : "neutral"} /></div>
+                      </td>
+                      <td className={adminTableCellClass}>
+                        {payment.interacTransferConfirmedAt ? (
+                          <span className="text-xs text-emerald-700">Received {new Date(payment.interacTransferConfirmedAt).toLocaleString()}</span>
+                        ) : payment.method === "INTERAC" ? (
+                          <span className="text-xs text-slate-500">Awaiting customer</span>
+                        ) : (
+                          <span className="text-xs text-slate-400">Not applicable</span>
+                        )}
+                      </td>
+                      <td className={adminTableCellClass}>
+                        {payment.user.membershipExpiresAt ? new Date(payment.user.membershipExpiresAt).toLocaleString() : "-"}
+                      </td>
+                      <td className={`${adminTableCellClass} text-right`}>
+                        {payment.status === "RECORDED" ? (
+                          <span className="text-xs font-medium text-emerald-700">Activated {payment.recordedAt ? new Date(payment.recordedAt).toLocaleDateString() : ""}</span>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No membership payments yet" />
+        )}
+      </Panel> : null}
+
+      {activeTab === "trip-transfers" ? <Panel title="Trip e-transfer payments">
+        {bookingInteracPaymentsLoading ? <p className="text-sm text-slate-500">Loading trip payments...</p> : null}
+        {bookingInteracPaymentsError ? <p className="text-sm text-amber-600">{bookingInteracPaymentsError}</p> : null}
+
+        {bookingInteracPayments.payments.length ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className={adminTableHeadClass}>
+                  <th className="px-3 py-2">Customer</th>
+                  <th className="px-3 py-2">Trip</th>
+                  <th className="px-3 py-2">Payment</th>
+                  <th className="px-3 py-2">Customer confirmation</th>
+                  <th className="px-3 py-2 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#EEF2F7]">
+                {bookingInteracPayments.payments.map((payment) => {
+                  const canConfirm = payment.status === "PENDING" && Boolean(payment.interacTransferConfirmedAt);
+
+                  return (
+                    <tr key={payment.id} className="align-top text-slate-700">
+                      <td className={`${adminTableCellClass} min-w-[14rem]`}>
+                        <div className="font-semibold text-slate-950">{payment.booking.customer.user.fullName}</div>
+                        <div className="mt-1 text-xs text-slate-500">{payment.booking.customer.user.email}</div>
+                      </td>
+                      <td className={`${adminTableCellClass} min-w-[20rem]`}>
+                        <div className="font-medium text-slate-950">{payment.booking.pickupLocation} to {payment.booking.destinationLocation}</div>
+                        <div className="mt-1 text-xs text-slate-500">{new Date(payment.booking.scheduledStartAt).toLocaleString()}</div>
+                      </td>
+                      <td className={adminTableCellClass}>
+                        <div className="font-semibold text-slate-950">{formatCurrency(payment.amount)}</div>
+                        <div className="mt-1 text-xs text-slate-500">{payment.providerReference}</div>
+                        <div className="mt-1"><StatusPill label={payment.status} tone={payment.status === "RECORDED" ? "emerald" : "amber"} /></div>
+                      </td>
+                      <td className={adminTableCellClass}>
+                        {payment.interacTransferConfirmedAt ? (
+                          <span className="text-xs text-emerald-700">Received {new Date(payment.interacTransferConfirmedAt).toLocaleString()}</span>
+                        ) : (
+                          <span className="text-xs text-slate-500">Awaiting customer</span>
+                        )}
+                      </td>
+                      <td className={`${adminTableCellClass} text-right`}>
+                        {payment.status === "PENDING" ? (
+                          <button
+                            type="button"
+                            onClick={() => void confirmBookingInteracPayment(payment)}
+                            disabled={!canConfirm || savingId === payment.id}
+                            className="rounded-full bg-[#2563EB] px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {savingId === payment.id ? "Confirming..." : "Confirm e-transfer"}
+                          </button>
+                        ) : (
+                          <span className="text-xs font-medium text-emerald-700">Recorded {payment.recordedAt ? new Date(payment.recordedAt).toLocaleDateString() : ""}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No trip e-transfer payments yet" />
+        )}
+      </Panel> : null}
+
+      {activeTab === "driver-payouts" ? <>
+        <div className="grid gap-4 xl:grid-cols-4">
+          <StatCard title="Weekly settlement rows" value={data.summary.weeklyRows} detail="Weekly driver payout groups." />
+          <StatCard title="Awaiting payout" value={formatCurrency(data.summary.pendingDriverShareAmount)} detail={`${data.summary.pendingRows} weekly payout row${data.summary.pendingRows === 1 ? "" : "s"} pending release.`} />
+          <StatCard title="Paid out" value={formatCurrency(data.summary.paidDriverShareAmount)} detail={`${data.summary.paidRows} weekly payout row${data.summary.paidRows === 1 ? "" : "s"} completed.`} />
+          <StatCard
+            title="Driver payout / platform"
+            value={`${data.settlementConfig.driverSharePercent}% / ${data.settlementConfig.platformSharePercent}%`}
+            detail={`${formatCurrency(data.summary.driverShareAmount)} driver share across ${data.summary.tripCount} completed paid trips.`}
+            tone="dark"
+          />
+        </div>
 
       <Panel title="Weekly settlement queue">
         {loading ? <p className="text-sm text-slate-500">Loading settlement totals...</p> : null}
@@ -244,6 +501,7 @@ export default function SettlementsPage() {
           <EmptyState title="No weekly settlements yet" />
         )}
       </Panel>
+      </> : null}
     </AdminShell>
   );
 }

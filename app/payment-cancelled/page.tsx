@@ -5,7 +5,7 @@ export default function PaymentCancelledPage() {
   return (
     <PublicPageShell
       heroTitle="Payment not completed"
-      heroCopy="Your Stripe checkout was cancelled before payment finished. You can return to the ChaufX app and try again whenever you are ready."
+      heroCopy="Your booking is still awaiting payment. Return to your account to try Stripe again."
       heroTagline="Payment paused"
     >
       <section className="bg-white">
@@ -18,14 +18,14 @@ export default function PaymentCancelledPage() {
               Payment cancelled.
             </h1>
             <p className="mt-4 text-base leading-7 text-slate-600">
-              No charge was recorded. Return to the ChaufX app to resume payment for your completed trip whenever it suits you.
+              No charge was recorded. Your booking remains available in Awaiting payment.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/"
+                href="/customer#awaiting-payment"
                 className="inline-flex rounded-full border border-[#D7DEEF] px-5 py-3 text-sm font-semibold text-[#2563EB] transition hover:border-[#2563EB]"
               >
-                Back to site
+                View awaiting payment
               </Link>
             </div>
           </div>

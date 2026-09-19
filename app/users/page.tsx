@@ -467,7 +467,7 @@ function UsersPageContent() {
                   Reset
                 </button>
                 <button type="button" className={adminPrimaryButtonClass} onClick={handleSave} disabled={saving}>
-                  {saving ? "Saving..." : "Save changes"}
+                  {saving ? "Saving..." : "Save"}
                 </button>
               </div>
             ) : null

@@ -109,6 +109,17 @@ export function SettlementsIcon({ className }: IconProps) {
   );
 }
 
+export function MembershipIcon({ className }: IconProps) {
+  return (
+    <IconBase className={className}>
+      <rect x="3" y="5" width="18" height="14" rx="3" />
+      <path d="M7 10h10" />
+      <path d="M7 14h4" />
+      <path d="m15 14 1.5 1.5L19 12" />
+    </IconBase>
+  );
+}
+
 export function MessagesIcon({ className }: IconProps) {
   return (
     <IconBase className={className}>
