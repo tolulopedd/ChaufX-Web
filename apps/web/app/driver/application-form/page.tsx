@@ -1107,7 +1107,7 @@ function DriverApplicationFormPageContent() {
                             : applicationUpdateToken && existingDocumentFor(key)
                               ? `Current: ${existingDocumentFor(key)!.fileName}`
                             : key === "proofOfInsurance"
-                              ? "Please upload the insurance page showing your liability coverage."
+                              ? "Please attach the insurance page showing liability coverage and dates, not the pink slip."
                               : required
                                 ? "Required upload"
                                 : "Optional upload"}

@@ -385,7 +385,7 @@ export const policyDocuments: PolicyDocument[] = [
         bullets: [
           "Bookings are performed in the customer’s vehicle, and the customer’s insurance is primary for operation of that vehicle during the booking.",
           "Drivers must decline or stop a booking if a vehicle appears unsafe, uninsured, unregistered, or otherwise non-compliant.",
-          "Drivers must maintain personal automobile insurance, including at least CAD $2,000,000 in third-party liability coverage and a non-owned automobile endorsement such as OPCF 27 or equivalent.",
+          "Drivers must maintain personal automobile insurance, including at least CAD $1,000,000 in third-party liability coverage. We encourage drivers to add Legal Liability for Damage to Non-Owned Vehicles to their standard auto insurance policy.",
           "Drivers must provide proof of insurance and updated driving documents during onboarding and when reasonably requested.",
           "Drivers must obey traffic laws, avoid impairment, avoid handheld device use while driving, complete vehicle checks, act professionally, and report incidents immediately.",
           "Senior assistance is limited to incidental, non-medical assistance and does not include medication administration or regulated health services."
