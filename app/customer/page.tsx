@@ -1147,7 +1147,7 @@ export default function CustomerPortalPage() {
       }>(`/payments/${bookingId}/checkout-session`, {
         method: "POST",
         body: JSON.stringify({
-          successReturnUrl: `${origin}/payment-complete`,
+          successReturnUrl: `${origin}/customer#upcoming`,
           cancelReturnUrl: `${origin}/customer#awaiting-payment`
         })
       });

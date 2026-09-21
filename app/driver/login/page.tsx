@@ -106,7 +106,7 @@ function DriverStatCard({
 }: {
   title: string;
   value: string | number;
-  detail: string;
+  detail?: string;
   tone?: "light" | "dark";
 }) {
   const dark = tone === "dark";
@@ -125,7 +125,7 @@ function DriverStatCard({
       <div className={`mt-3 text-[2rem] font-semibold leading-none tracking-[-0.06em] ${dark ? "text-white" : "text-slate-950"}`}>
         {value}
       </div>
-      <p className={`mt-3 text-sm leading-6 ${dark ? "text-white/78" : "text-slate-600"}`}>{detail}</p>
+      {detail ? <p className={`mt-3 text-sm leading-6 ${dark ? "text-white/78" : "text-slate-600"}`}>{detail}</p> : null}
     </div>
   );
 }
@@ -163,14 +163,14 @@ function DriverSection({
   );
 }
 
-function EmptyCard({ title, description }: { title: string; description: string }) {
+function EmptyCard({ title, description }: { title: string; description?: string }) {
   return (
     <div className="rounded-[24px] border border-dashed border-[#D9E1F2] bg-[linear-gradient(180deg,#F8FAFC_0%,#FFFFFF_100%)] p-6">
       <div className="inline-flex rounded-full bg-[#EEF0FF] px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-[#4338CA]">
         ChaufX
       </div>
       <h3 className="mt-4 text-lg font-semibold tracking-[-0.03em] text-slate-950">{title}</h3>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
+      {description ? <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p> : null}
     </div>
   );
 }
@@ -219,9 +219,12 @@ export default function DriverLoginPage() {
 
   const currentRides = useMemo(
     () =>
-      (profile?.bookings ?? []).filter((booking: any) =>
-        ["ACCEPTED", "ENROUTE", "ACTIVE"].includes(String(booking.status))
-      ),
+      (profile?.bookings ?? [])
+        .filter((booking: any) => ["ACCEPTED", "ENROUTE", "ACTIVE"].includes(String(booking.status)))
+        .sort(
+          (left: any, right: any) =>
+            new Date(left.scheduledStartAt).getTime() - new Date(right.scheduledStartAt).getTime()
+        ),
     [profile]
   );
 
@@ -266,19 +269,15 @@ export default function DriverLoginPage() {
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[240px_1fr] lg:items-start">
         <aside className="h-fit rounded-[30px] border border-[#E5E7EB] bg-white/95 p-4 shadow-[0_24px_52px_-36px_rgba(15,23,42,0.3)] backdrop-blur lg:sticky lg:top-5 lg:self-start">
           <div className="rounded-[24px] bg-[linear-gradient(145deg,#0F172A,#1f2555_48%,#4338CA_100%)] p-5 text-white">
-            <div className="text-lg font-semibold tracking-[-0.03em]">Driver workspace</div>
-            <div className="mt-4 max-w-[12rem] rounded-full border border-white/12 bg-white/8 px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-white/70">
-              Active account
+            <div className="max-w-[15rem] rounded-full border border-white/12 bg-white/8 px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/70">
+              ChaufX Driver Web Platform
             </div>
-            <p className="mt-3 text-sm leading-6 text-white/80">
-              Review accepted rides, monitor earnings, and keep track of completed trips from one workspace.
-            </p>
           </div>
 
           <nav className="mt-5 space-y-1.5">
             {[
               { href: "#overview", label: "Overview", icon: DashboardIcon },
-              { href: "#current-rides", label: "Current rides", icon: TripsIcon },
+              { href: "#current-rides", label: "Upcoming trips", icon: TripsIcon },
               { href: "#settlements", label: "Settlements", icon: SettlementsIcon },
               { href: "#history", label: "Ride history", icon: ReportsIcon }
             ].map((item) => (
@@ -313,18 +312,18 @@ export default function DriverLoginPage() {
         </aside>
 
         <main className="space-y-6">
-          <section
+          {activeSection === "overview" ? (
+            <>
+              <section
             id="overview"
             className="rounded-[32px] border border-[#E5E7EB] bg-white/90 p-5 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.22)] backdrop-blur md:p-6"
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
-                <h1 className="text-[2.2rem] font-semibold tracking-[-0.055em]">
-                  Welcome back, {firstName(profile.user?.fullName)}.
+                <h1 className="text-[1.9rem] font-semibold tracking-[-0.05em]">
+                  <span className="mr-2 text-lg font-normal tracking-normal text-slate-600">Welcome back</span>
+                  {firstName(profile.user?.fullName)}
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                  Manage accepted rides, review payout progress, and keep a clear record of completed trips from your driver account.
-                </p>
               </div>
               <div className="rounded-2xl border border-[#DCDDFF] bg-[#EEF0FF] px-4 py-3 text-sm text-[#4338CA]">
                 Signed in as <span className="font-semibold">{profile.user?.email ?? "driver"}</span>
@@ -334,23 +333,47 @@ export default function DriverLoginPage() {
 
           {error ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <DriverStatCard title="Current rides" value={currentRides.length} detail="Accepted, enroute, and active rides assigned to you." />
-            <DriverStatCard title="This week" value={currentWeekPayout} detail="Driver share earned from completed paid rides this week." />
-            <DriverStatCard title="Awaiting payout" value={outstandingPayout} detail="Approved earnings still pending weekly settlement release." />
-            <DriverStatCard title="Paid out" value={paidOutTotal} detail="Driver share already released through completed settlements." tone="dark" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <DriverStatCard title="Upcoming trips" value={currentRides.length} />
+            <DriverStatCard title="This week" value={currentWeekPayout} />
+            <DriverStatCard title="Awaiting payout" value={outstandingPayout} />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <DriverStatCard title="Lifetime earnings" value={lifetimePayout} detail="Total driver share across completed paid rides." />
-            <DriverStatCard title="Driver rating" value={ratingText} detail={`${profile.ratingSummary?.totalRatings ?? 0} completed customer rating${profile.ratingSummary?.totalRatings === 1 ? "" : "s"}.`} tone="dark" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <DriverStatCard title="Paid out" value={paidOutTotal} />
+            <DriverStatCard title="Lifetime earnings" value={lifetimePayout} />
+            <DriverStatCard title="Driver rating" value={ratingText} detail={`${profile.ratingSummary?.totalRatings ?? 0} rating${profile.ratingSummary?.totalRatings === 1 ? "" : "s"}`} tone="dark" />
           </div>
 
-          <DriverSection
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-[24px] border border-[#E5E7EB] bg-white p-5 shadow-[0_16px_38px_-34px_rgba(15,23,42,0.22)]">
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Routing</div>
+              <div className="mt-3 text-base font-semibold text-[#0F172A]">Live location</div>
+              <div className="mt-2 text-sm leading-6 text-slate-500">Updated {lastLocationUpdate}</div>
+            </div>
+            <div className="rounded-[24px] border border-[#E5E7EB] bg-white p-5 shadow-[0_16px_38px_-34px_rgba(15,23,42,0.22)]">
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Availability</div>
+              <div className="mt-3 text-base font-semibold text-[#0F172A]">{profile.availabilityStatus ? "Online" : "Offline"}</div>
+            </div>
+            <div className="rounded-[24px] border border-[#E5E7EB] bg-white p-5 shadow-[0_16px_38px_-34px_rgba(15,23,42,0.22)]">
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Account</div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link href="/driver/status" className="rounded-full border border-[#D7DEEF] px-4 py-2.5 text-sm font-semibold text-[#2563EB] transition hover:bg-[#F8FAFF]">
+                  Application status
+                </Link>
+                <Link href="/driver/apply" className="rounded-full bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1D4ED8]">
+                  Application details
+                </Link>
+              </div>
+            </div>
+          </div>
+            </>
+          ) : null}
+
+          {activeSection === "current-rides" ? <DriverSection
             id="current-rides"
-            eyebrow="Current rides"
-            title="Accepted and active rides"
-            description="These rides are currently assigned to you and still in progress or awaiting the next trip action."
+            eyebrow="Upcoming trips"
+            title="Upcoming trips"
             aside={
               <button
                 type="button"
@@ -395,33 +418,28 @@ export default function DriverLoginPage() {
               </div>
             ) : (
               <EmptyCard
-                title="No active assignments"
-                description="Accepted, enroute, and active rides will appear here once they are assigned to your account."
+                title="No upcoming trips"
               />
             )}
-          </DriverSection>
+          </DriverSection> : null}
 
-          <DriverSection
+          {activeSection === "settlements" ? <DriverSection
             id="settlements"
             eyebrow="Settlements"
-            title="Driver payout summary"
-            description={`Driver share is ${profile.settlementConfig?.driverSharePercent ?? 70}% after the platform retains ${profile.settlementConfig?.platformSharePercent ?? 30}% for operations.`}
+            title="Payouts"
           >
             <div className="grid gap-4 lg:grid-cols-3">
               <StatCard
                 title="Completed paid rides"
                 value={profile.settlementSummary?.completedPaidTripsCount ?? 0}
-                detail="Trips currently included in your earnings record."
               />
               <StatCard
                 title="This week"
                 value={currentWeekPayout}
-                detail="Current week driver share from completed paid rides."
               />
               <StatCard
                 title="Outstanding payout"
                 value={outstandingPayout}
-                detail="Weekly settlements awaiting release."
                 tone="dark"
               />
             </div>
@@ -444,7 +462,6 @@ export default function DriverLoginPage() {
                             <StatusPill label={settlementStatusLabel(row.status)} tone={settlementStatusTone(row.status)} />
                           </div>
                           <div className="mt-3 space-y-1 text-sm text-slate-500">
-                            <div>Weekly payout period based on completed paid rides.</div>
                             {row.paidAt ? <div>Paid on {formatDate(row.paidAt)}</div> : null}
                             {row.payoutReference ? <div>Reference: {row.payoutReference}</div> : null}
                           </div>
@@ -511,17 +528,15 @@ export default function DriverLoginPage() {
               ) : (
                 <EmptyState
                   title="No payout rows available"
-                  description="Weekly payout rows will appear here after completed paid rides are recorded on your account."
                 />
               )}
             </div>
-          </DriverSection>
+          </DriverSection> : null}
 
-          <DriverSection
+          {activeSection === "history" ? <DriverSection
             id="history"
             eyebrow="Ride history"
-            title="Completed ride history"
-            description="A record of completed and cancelled rides associated with your account."
+            title="Ride history"
           >
             {completedRides.length ? (
               <div className="overflow-hidden rounded-[24px] border border-[#E5E7EB] bg-white">
@@ -559,35 +574,10 @@ export default function DriverLoginPage() {
               </div>
             ) : (
               <EmptyCard
-                title="No ride history available"
-                description="Completed and cancelled rides will appear here once activity has been recorded on your account."
+                title="No rides yet"
               />
             )}
-          </DriverSection>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-[24px] border border-[#E5E7EB] bg-white p-5 shadow-[0_16px_38px_-34px_rgba(15,23,42,0.22)]">
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Routing</div>
-              <div className="mt-3 text-base font-semibold text-[#0F172A]">Based on your live location</div>
-              <div className="mt-2 text-sm leading-6 text-slate-500">Last location update: {lastLocationUpdate}</div>
-            </div>
-            <div className="rounded-[24px] border border-[#E5E7EB] bg-white p-5 shadow-[0_16px_38px_-34px_rgba(15,23,42,0.22)]">
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Availability</div>
-              <div className="mt-3 text-base font-semibold text-[#0F172A]">{profile.availabilityStatus ? "Online" : "Offline"}</div>
-              <div className="mt-2 text-sm leading-6 text-slate-500">Your account is {profile.availabilityStatus ? "visible for nearby requests" : "currently unavailable for new requests"}.</div>
-            </div>
-            <div className="rounded-[24px] border border-[#E5E7EB] bg-white p-5 shadow-[0_16px_38px_-34px_rgba(15,23,42,0.22)]">
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Account tools</div>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Link href="/driver/status" className="rounded-full border border-[#E5E7EB] px-4 py-2.5 text-sm font-semibold text-slate-700">
-                  Application status
-                </Link>
-                <Link href="/driver/apply" className="rounded-full bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white">
-                  Application details
-                </Link>
-              </div>
-            </div>
-          </div>
+          </DriverSection> : null}
         </main>
       </div>
     </main>
