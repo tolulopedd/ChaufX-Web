@@ -97,6 +97,9 @@ export default function ApplicationsPage() {
   const [selectedId, setSelectedId] = useState("");
   const [busyId, setBusyId] = useState("");
   const [notice, setNotice] = useState("");
+  const [applicantSearch, setApplicantSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [submittedDateFilter, setSubmittedDateFilter] = useState("");
   const [reviewAction, setReviewAction] = useState<{
     applicationId: string;
     decision: "approved" | "rejected" | "additional_info" | "criminal_check";
@@ -133,12 +136,31 @@ export default function ApplicationsPage() {
   const reviewLocked =
     selectedApplication?.status === "APPROVED" || selectedApplication?.status === "REJECTED";
   const criminalCheckSent = Boolean(selectedApplication?.criminalCheckInvitedAt);
-  const driverAbstractSubmitted = Boolean(selectedApplication?.driverAbstractCandidateConfirmedAt);
+  const driverAbstractSubmitted = Boolean(
+    selectedApplication?.driverAbstractCandidateConfirmedAt || selectedApplication?.criminalCheckInvitedAt
+  );
 
   const submittedCount = data.filter((application) => application.status === "SUBMITTED").length;
   const underReviewCount = data.filter((application) => application.status === "UNDER_REVIEW").length;
-  const awaitingDriverAction = data.filter((application) => application.status === "AWAITING_DRIVER_ABSTRACT");
-  const reviewQueue = data.filter((application) => application.status !== "AWAITING_DRIVER_ABSTRACT");
+  const filteredApplications = useMemo(
+    () =>
+      data
+        .filter((application) => {
+          const matchesApplicant = application.fullName.toLowerCase().includes(applicantSearch.trim().toLowerCase());
+          const isPending = ["AWAITING_DRIVER_ABSTRACT", "SUBMITTED", "UNDER_REVIEW"].includes(application.status);
+          const matchesStatus =
+            statusFilter === "ALL" ||
+            (statusFilter === "PENDING" ? isPending : application.status === statusFilter);
+          const submittedDate = new Date(application.createdAt).toISOString().slice(0, 10);
+          const matchesDate = !submittedDateFilter || submittedDate === submittedDateFilter;
+
+          return matchesApplicant && matchesStatus && matchesDate;
+        })
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+    [data, applicantSearch, statusFilter, submittedDateFilter]
+  );
+  const awaitingDriverAction = filteredApplications.filter((application) => application.status === "AWAITING_DRIVER_ABSTRACT");
+  const reviewQueue = filteredApplications.filter((application) => application.status !== "AWAITING_DRIVER_ABSTRACT");
 
   async function review(applicationId: string, decision: "approved" | "rejected" | "additional_info", note: string) {
     setBusyId(applicationId);
@@ -255,7 +277,57 @@ export default function ApplicationsPage() {
         {error ? <p className="text-sm text-amber-600">{error}</p> : null}
         {notice ? <p className="text-sm text-emerald-600">{notice}</p> : null}
 
-        {data.length ? (
+        <div className="mb-5 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+          <label className="min-w-0 md:col-span-3 lg:col-span-1">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Applicant name</span>
+            <input
+              type="search"
+              value={applicantSearch}
+              onChange={(event) => setApplicantSearch(event.target.value)}
+              placeholder="Search applicant name"
+              className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#2563EB]"
+            />
+          </label>
+          <label className="min-w-0 flex-1">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Status</span>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#2563EB]"
+            >
+              <option value="ALL">All statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="AWAITING_DRIVER_ABSTRACT">Awaiting driver abstract</option>
+              <option value="SUBMITTED">Submitted</option>
+              <option value="UNDER_REVIEW">Under review</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </label>
+          <label className="min-w-0 flex-1">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Submission date</span>
+            <input
+              type="date"
+              value={submittedDateFilter}
+              onChange={(event) => setSubmittedDateFilter(event.target.value)}
+              className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#2563EB]"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter("ALL");
+              setSubmittedDateFilter("");
+              setApplicantSearch("");
+            }}
+            disabled={statusFilter === "ALL" && !submittedDateFilter && !applicantSearch}
+            className={adminGhostButtonClass}
+          >
+            Clear filters
+          </button>
+        </div>
+
+        {filteredApplications.length ? (
           <div className="space-y-4">
             {awaitingDriverAction.length ? (
               <div>
@@ -271,7 +343,7 @@ export default function ApplicationsPage() {
             ) : null}
           </div>
         ) : (
-          <EmptyState title="No applications" />
+          <EmptyState title="No applications match these filters" />
         )}
       </Panel>
 
