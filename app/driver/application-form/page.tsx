@@ -552,7 +552,7 @@ function DriverApplicationFormPageContent() {
           )
       );
 
-      await driverApply({
+      const result = await driverApply({
         verificationToken: applicationUpdateToken ? undefined : form.verificationToken,
         applicationUpdateToken: applicationUpdateToken || undefined,
         fullName: `${form.firstName} ${form.lastName}`.trim(),
@@ -574,7 +574,14 @@ function DriverApplicationFormPageContent() {
         documents
       });
 
-      router.push(applicationUpdateToken ? `/driver/status?email=${encodeURIComponent(form.email)}` : `/driver/background-check?email=${encodeURIComponent(form.email)}`);
+      const driverAbstractToken = result?.driverAbstractToken;
+      router.push(
+        applicationUpdateToken
+          ? `/driver/status?email=${encodeURIComponent(form.email)}`
+          : driverAbstractToken
+            ? `/driver/background-check?token=${encodeURIComponent(driverAbstractToken)}`
+            : `/driver/status?email=${encodeURIComponent(form.email)}`
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to submit application");
     } finally {
