@@ -7,8 +7,6 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { fetchApplicationStatus } from "../../../lib/api";
 
-const tritonDriverAbstractEnglishUrl = "https://secure.tritoncanada.ca/Eiv/InitiateEiv?id=3053c519-8fa3-e878-6f61-e1d2831a1543&language=en";
-
 function StatusPageContent() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
@@ -40,6 +38,8 @@ function StatusPageContent() {
           ? "Application update"
           : result?.criminalCheckInvitedAt
             ? "Criminal record verification in progress"
+            : result?.status === "AWAITING_DRIVER_ABSTRACT"
+              ? "Driver abstract required"
             : result?.driverAbstractInitiatedAt
               ? "Driver abstract verification in progress"
               : result?.status ?? "";
@@ -53,6 +53,8 @@ function StatusPageContent() {
           ? "There is an important update on your application. Please review the note below."
           : result?.criminalCheckInvitedAt
             ? "Check your email for the criminal record verification link."
+            : result?.status === "AWAITING_DRIVER_ABSTRACT"
+              ? "Check your email for the secure Triton Driver Abstract link."
             : result?.driverAbstractInitiatedAt
               ? "Complete your driver abstract verification before ChaufX can continue the review."
               : "Your application is being reviewed by our team.";
@@ -116,16 +118,6 @@ function StatusPageContent() {
                       : "No additional note is available at this time."}
                 </div>
 
-              {result.driverAbstractInitiatedAt && !result.criminalCheckInvitedAt && result.status !== "APPROVED" && result.status !== "REJECTED" ? (
-                <a
-                  href={tritonDriverAbstractEnglishUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-4 inline-flex rounded-xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white"
-                >
-                  Continue driver abstract verification
-                </a>
-              ) : null}
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">

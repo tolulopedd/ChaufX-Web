@@ -307,6 +307,34 @@ export async function driverApply(payload: unknown) {
   return data;
 }
 
+export async function fetchDriverAbstractSubmission(token: string) {
+  const response = await fetch(`${API_BASE}/driver-onboarding/driver-abstract?token=${encodeURIComponent(token)}`, {
+    cache: "no-store"
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message ?? "Unable to load the driver abstract step.");
+  }
+
+  return data as { id: string; fullName: string; email: string; status: string };
+}
+
+export async function submitDriverAbstractForReview(token: string) {
+  const response = await fetch(`${API_BASE}/driver-onboarding/driver-abstract/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, confirmed: true })
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message ?? "Unable to submit the driver abstract for review.");
+  }
+
+  return data;
+}
+
 export async function fetchDriverApplicationUpdate(token: string) {
   const response = await fetch(`${API_BASE}/driver-onboarding/application-update?token=${encodeURIComponent(token)}`, {
     cache: "no-store"

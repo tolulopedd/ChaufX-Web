@@ -30,6 +30,8 @@ function formatReviewEvent(event?: string) {
       return "Additional information requested";
     case "APPLICATION_RESUBMITTED":
       return "Driver response";
+    case "DRIVER_ABSTRACT_SUBMITTED":
+      return "Driver abstract submitted for review";
     case "APPROVED":
       return "Application approved";
     case "REJECTED":
@@ -131,9 +133,12 @@ export default function ApplicationsPage() {
   const reviewLocked =
     selectedApplication?.status === "APPROVED" || selectedApplication?.status === "REJECTED";
   const criminalCheckSent = Boolean(selectedApplication?.criminalCheckInvitedAt);
+  const driverAbstractSubmitted = Boolean(selectedApplication?.driverAbstractCandidateConfirmedAt);
 
   const submittedCount = data.filter((application) => application.status === "SUBMITTED").length;
   const underReviewCount = data.filter((application) => application.status === "UNDER_REVIEW").length;
+  const awaitingDriverAction = data.filter((application) => application.status === "AWAITING_DRIVER_ABSTRACT");
+  const reviewQueue = data.filter((application) => application.status !== "AWAITING_DRIVER_ABSTRACT");
 
   async function review(applicationId: string, decision: "approved" | "rejected" | "additional_info", note: string) {
     setBusyId(applicationId);
@@ -174,6 +179,20 @@ export default function ApplicationsPage() {
     }
   }
 
+  async function sendDriverAbstractLink(applicationId: string) {
+    setBusyId(applicationId);
+
+    try {
+      await adminFetch(`/admin/applications/${applicationId}/driver-abstract-link`, {
+        method: "POST"
+      });
+      await reload();
+      setNotice("Driver abstract link sent successfully.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   async function previewDocument(documentId: string, fileName: string) {
     setBusyId(documentId);
 
@@ -188,6 +207,37 @@ export default function ApplicationsPage() {
     } finally {
       setBusyId("");
     }
+  }
+
+  function renderApplicationCard(application: any) {
+    return (
+      <button
+        key={application.id}
+        type="button"
+        onClick={() => setSelectedId(application.id)}
+        className="w-full rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3.5 text-left transition hover:border-[#D6DCEF] hover:bg-white"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[0.95rem] font-semibold tracking-[-0.03em] text-slate-950">{application.fullName}</div>
+            <div className="mt-1 truncate text-sm text-slate-500">{application.email}</div>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+              <span>{application.phone}</span>
+              <span>{application.preferredServiceAreas?.[0] ?? "No province selected"}</span>
+              <span>{application.documents.length} document{application.documents.length === 1 ? "" : "s"}</span>
+              <span>Submitted {formatDate(application.createdAt)}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusPill
+              label={formatApplicationStatus(application.status)}
+              tone={application.status === "APPROVED" ? "emerald" : application.status === "REJECTED" ? "rose" : "amber"}
+            />
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#4338CA]">Open</span>
+          </div>
+        </div>
+      </button>
+    );
   }
 
   return (
@@ -207,38 +257,18 @@ export default function ApplicationsPage() {
 
         {data.length ? (
           <div className="space-y-4">
-            <div className="space-y-2.5">
-              {data.map((application) => {
-                return (
-                  <button
-                    key={application.id}
-                    type="button"
-                    onClick={() => setSelectedId(application.id)}
-                    className="w-full rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3.5 text-left transition hover:border-[#D6DCEF] hover:bg-white"
-                  >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[0.95rem] font-semibold tracking-[-0.03em] text-slate-950">{application.fullName}</div>
-                        <div className="mt-1 truncate text-sm text-slate-500">{application.email}</div>
-                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-                          <span>{application.phone}</span>
-                          <span>{application.preferredServiceAreas?.[0] ?? "No province selected"}</span>
-                          <span>{application.documents.length} document{application.documents.length === 1 ? "" : "s"}</span>
-                          <span>Submitted {formatDate(application.createdAt)}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <StatusPill
-                          label={formatApplicationStatus(application.status)}
-                          tone={application.status === "APPROVED" ? "emerald" : application.status === "REJECTED" ? "rose" : "amber"}
-                        />
-                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#4338CA]">Open</span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {awaitingDriverAction.length ? (
+              <div>
+                <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Awaiting driver action</div>
+                <div className="space-y-2.5">{awaitingDriverAction.map(renderApplicationCard)}</div>
+              </div>
+            ) : null}
+            {reviewQueue.length ? (
+              <div>
+                <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Review queue</div>
+                <div className="space-y-2.5">{reviewQueue.map(renderApplicationCard)}</div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <EmptyState title="No applications" />
@@ -265,6 +295,20 @@ export default function ApplicationsPage() {
                 <button
                   type="button"
                   disabled={busyId === selectedApplication.id || reviewLocked || criminalCheckSent}
+                  onClick={async () => {
+                    try {
+                      await sendDriverAbstractLink(selectedApplication.id);
+                    } catch (reason) {
+                      setNotice(reason instanceof Error ? reason.message : "Unable to send the driver abstract link.");
+                    }
+                  }}
+                  className={adminSecondaryButtonClass}
+                >
+                  {busyId === selectedApplication.id && !criminalCheckSent ? "Sending..." : "Send abstract link"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busyId === selectedApplication.id || reviewLocked || criminalCheckSent || !driverAbstractSubmitted}
                   onClick={() => {
                     setReviewAction({
                       applicationId: selectedApplication.id,
@@ -281,7 +325,7 @@ export default function ApplicationsPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={busyId === selectedApplication.id || reviewLocked}
+                  disabled={busyId === selectedApplication.id || reviewLocked || !driverAbstractSubmitted}
                   onClick={() => {
                     setReviewAction({
                       applicationId: selectedApplication.id,
@@ -366,9 +410,14 @@ export default function ApplicationsPage() {
             <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">Background check</div>
               <div className="mt-2 text-sm font-semibold text-slate-950">
-                {selectedApplication.criminalCheckInvitedAt ? "Criminal record verification invitation sent" : "Driver abstract verification pending"}
+                {selectedApplication.criminalCheckInvitedAt
+                  ? "Criminal record verification invitation sent"
+                  : selectedApplication.driverAbstractCandidateConfirmedAt
+                    ? "Driver abstract submitted for review"
+                    : "Driver abstract required"}
               </div>
               {selectedApplication.backgroundCheckComment ? <div className="mt-2 text-sm text-slate-600">{selectedApplication.backgroundCheckComment}</div> : null}
+              {selectedApplication.driverAbstractReminderSentAt ? <div className="mt-2 text-xs text-slate-500">Driver abstract link sent {formatDate(selectedApplication.driverAbstractReminderSentAt)}</div> : null}
               {selectedApplication.criminalCheckInvitedAt ? <div className="mt-2 text-xs text-slate-500">Sent {formatDate(selectedApplication.criminalCheckInvitedAt)}</div> : null}
             </div>
 
