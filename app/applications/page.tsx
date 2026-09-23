@@ -135,10 +135,6 @@ export default function ApplicationsPage() {
   );
   const reviewLocked =
     selectedApplication?.status === "APPROVED" || selectedApplication?.status === "REJECTED";
-  const criminalCheckSent = Boolean(selectedApplication?.criminalCheckInvitedAt);
-  const driverAbstractSubmitted = Boolean(
-    selectedApplication?.driverAbstractCandidateConfirmedAt || selectedApplication?.criminalCheckInvitedAt
-  );
 
   const submittedCount = data.filter((application) => application.status === "SUBMITTED").length;
   const underReviewCount = data.filter((application) => application.status === "UNDER_REVIEW").length;
@@ -366,7 +362,7 @@ export default function ApplicationsPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={busyId === selectedApplication.id || reviewLocked || criminalCheckSent}
+                  disabled={busyId === selectedApplication.id || reviewLocked}
                   onClick={async () => {
                     try {
                       await sendDriverAbstractLink(selectedApplication.id);
@@ -376,11 +372,11 @@ export default function ApplicationsPage() {
                   }}
                   className={adminSecondaryButtonClass}
                 >
-                  {busyId === selectedApplication.id && !criminalCheckSent ? "Sending..." : "Send abstract link"}
+                  {busyId === selectedApplication.id ? "Sending..." : "Send abstract link"}
                 </button>
                 <button
                   type="button"
-                  disabled={busyId === selectedApplication.id || reviewLocked || criminalCheckSent || !driverAbstractSubmitted}
+                  disabled={busyId === selectedApplication.id || reviewLocked}
                   onClick={() => {
                     setReviewAction({
                       applicationId: selectedApplication.id,
@@ -397,7 +393,7 @@ export default function ApplicationsPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={busyId === selectedApplication.id || reviewLocked || !driverAbstractSubmitted}
+                  disabled={busyId === selectedApplication.id || reviewLocked}
                   onClick={() => {
                     setReviewAction({
                       applicationId: selectedApplication.id,
