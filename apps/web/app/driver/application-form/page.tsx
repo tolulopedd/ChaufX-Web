@@ -116,7 +116,7 @@ const documentUploadFields: Array<{
 }> = [
   { label: "* Valid Driver’s License (Front page)", key: "driverLicenseFront", required: true },
   { label: "* Valid Driver’s License (Back page)", key: "driverLicenseBack", required: true },
-  { label: "* Proof of Insurance", key: "proofOfInsurance", required: true },
+  { label: "* Insurance Certificate", key: "proofOfInsurance", required: true },
   { label: "Proof of Work Authorization (For Canadian temporary residents)", key: "workAuthorization", required: false },
   { label: "First Aid / CPR / PSW / Health or emergency training certificate", key: "healthTrainingCertificate", required: false }
 ];
@@ -1097,6 +1097,7 @@ function DriverApplicationFormPageContent() {
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   {documentUploadFields.map(({ label, key, required }) => {
                     const file = uploadedFiles[key];
+                    const isProofOfInsurance = key === "proofOfInsurance";
 
                     return (
                       <label key={key} className="block">
@@ -1113,8 +1114,8 @@ function DriverApplicationFormPageContent() {
                             ? `Selected: ${file.name}`
                             : applicationUpdateToken && existingDocumentFor(key)
                               ? `Current: ${existingDocumentFor(key)!.fileName}`
-                            : key === "proofOfInsurance"
-                              ? "Please attach the insurance page showing liability coverage and dates, not the pink slip."
+                            : isProofOfInsurance
+                              ? <span className="bg-amber-100 px-1 text-slate-950">Attach your current insurance policy certificate — not the pink slip kept in your vehicle. We require the page that outlines your liability coverages.</span>
                               : required
                                 ? "Required upload"
                                 : "Optional upload"}
