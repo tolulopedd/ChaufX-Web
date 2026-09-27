@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SessionIdleGuard } from "../components/session-idle-guard";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,6 +33,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         />
       </head>
       <body>
+        <SessionIdleGuard />
         <noscript>
           <iframe
             src="https://www.googletagmanager.com/ns.html?id=GTM-TD8M2RCW"
