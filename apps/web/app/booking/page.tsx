@@ -11,13 +11,13 @@ export default function BookingPage() {
         <div className="mx-auto max-w-5xl px-5 py-12 md:px-8">
           <div className="grid gap-4 md:grid-cols-2">
             <div id="drive-now" className="rounded-[28px] border border-[#E5E7EB] bg-white p-6 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
-              <h2 className="text-2xl font-semibold tracking-[-0.04em] text-[#0F172A]">Drive now</h2>
+              <h2 className="text-2xl font-semibold tracking-[-0.04em] text-[#0F172A]">Book Now</h2>
               <p className="mt-3 text-sm leading-7 text-slate-600">
                 Confirm pickup, enter your destination, and request a chauffeur for the nearest approved operating window.
               </p>
             </div>
             <div id="schedule-drive" className="rounded-[28px] border border-[#E5E7EB] bg-white p-6 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.18)]">
-              <h2 className="text-2xl font-semibold tracking-[-0.04em] text-[#0F172A]">Schedule Your Driver</h2>
+              <h2 className="text-2xl font-semibold tracking-[-0.04em] text-[#0F172A]">Schedule a trip</h2>
               <p className="mt-3 text-sm leading-7 text-slate-600">
                 Choose a later date and time for appointments, business travel, evening plans, and longer personal journeys.
               </p>

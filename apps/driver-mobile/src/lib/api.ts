@@ -5,6 +5,18 @@ import { buildMobileApiBaseCandidates } from "@chaufx/config";
 let resolvedApiBase: string | null = null;
 const REQUEST_TIMEOUT_MS = 15000;
 
+export type Session = {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    role: string;
+    fullName: string;
+    email: string;
+    phone?: string | null;
+  };
+};
+
 function isFinalApiError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
@@ -159,6 +171,13 @@ export function login(email: string, password: string) {
         : "Unable to reach the ChaufX API."
     );
   })();
+}
+
+export function refreshSession(refreshToken: string) {
+  return request<Session>("/auth/refresh", "", {
+    method: "POST",
+    body: JSON.stringify({ refreshToken })
+  });
 }
 
 export function requestPasswordReset(email: string) {

@@ -112,6 +112,7 @@ async function request<T>(path: string, options?: RequestInit) {
 
 export type Session = {
   accessToken: string;
+  refreshToken: string;
   user: {
     id: string;
     role: string;
@@ -133,10 +134,27 @@ export type TripMessage = {
   };
 };
 
+export type PreferredDriver = {
+  id: string;
+  displayName: string;
+  averageRating: number | null;
+  ratingCount: number;
+  customerRating: number;
+  completedTripsWithYou: number;
+  lastTripAt: string | null;
+};
+
 export function login(email: string, password: string) {
   return request<Session>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password, expectedApp: "customer" })
+  });
+}
+
+export function refreshSession(refreshToken: string) {
+  return request<Session>("/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refreshToken })
   });
 }
 
@@ -254,6 +272,33 @@ export function fetchBookingEstimate(token: string, payload: Record<string, unkn
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify(payload)
+  });
+}
+
+export function fetchPreferredDrivers(
+  token: string,
+  payload: {
+    requestType: "NOW" | "LATER";
+    pickupLocation: string;
+    pickupLat: number;
+    pickupLng: number;
+    scheduledStartAt: string;
+    expectedDurationMinutes: number;
+    zoneCode: string;
+  }
+) {
+  const query = new URLSearchParams({
+    requestType: payload.requestType,
+    pickupLocation: payload.pickupLocation,
+    pickupLat: String(payload.pickupLat),
+    pickupLng: String(payload.pickupLng),
+    scheduledStartAt: payload.scheduledStartAt,
+    expectedDurationMinutes: String(payload.expectedDurationMinutes),
+    zoneCode: payload.zoneCode
+  });
+
+  return request<PreferredDriver[]>(`/bookings/preferred-drivers?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` }
   });
 }
 

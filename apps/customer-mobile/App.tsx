@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   ActivityIndicator,
+  AppState,
   Animated,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -31,15 +33,18 @@ import {
   fetchBookingEstimate,
   fetchBookings,
   fetchMapState,
+  fetchPreferredDrivers,
   fetchTripMessages,
   fetchProfile,
   login,
   requestCustomerVerificationEmail,
   requestPasswordReset,
+  refreshSession,
   sendTripMessage,
   submitRating,
   syncBookingPayment,
   updateCustomerProfile,
+  type PreferredDriver,
   type Session,
   type TripMessage
 } from "./src/lib/api";
@@ -80,7 +85,16 @@ const logo = require("./assets/chaufx-mark.png");
 const paymentCompleteUrl = "ca.chaufx.customer://payment-complete";
 const paymentCancelledUrl = "ca.chaufx.customer://payment-cancelled";
 const TRIP_HISTORY_DAYS = 7;
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const CANADA_MAP_FALLBACK: Coordinate = { latitude: 56.1304, longitude: -106.3468 };
+const termsUrl = "https://chaufx.ca/policies/terms-and-conditions";
+const privacyPolicyUrl = "https://chaufx.ca/policies/privacy-policy";
+const deleteAccountUrl = "https://chaufx.ca/delete-account";
+
+// Mapbox must have its token before the preview map mounts; otherwise its first style load can fail.
+if (mapboxToken) {
+  Mapbox.setAccessToken(mapboxToken);
+}
 
 function isCustomerSession(session: any) {
   return String(session?.user?.role ?? "").toLowerCase() === "customer";
@@ -113,6 +127,7 @@ function isVerifiedCustomerProfile(profile: any) {
 
   return Boolean(
     customerProfile?.dateOfBirth &&
+      isEligibleCustomerAge(String(customerProfile.dateOfBirth).slice(0, 10)) &&
       customerProfile?.primaryAddress &&
       customerProfile?.emergencyContactName &&
       customerProfile?.emergencyContactPhone &&
@@ -138,6 +153,7 @@ function isCustomerReadyToBook(profile: any) {
   return Boolean(
     profile?.emailVerifiedAt &&
       normalizeCanadianPhoneNumber(profile?.phone ?? "") &&
+      isEligibleCustomerAge(String(customerProfile?.dateOfBirth ?? "").slice(0, 10)) &&
       customerProfile?.identityDocument &&
       primaryVehicle?.make &&
       primaryVehicle?.model &&
@@ -162,6 +178,14 @@ function formatCanadianPhoneNumber(value: string) {
   return `+1 (${localNumber.slice(0, 3)}) ${localNumber.slice(3, 6)}-${localNumber.slice(6)}`;
 }
 
+function formatBookingVehicleDetails(vehicle: any) {
+  const details = [vehicle?.make, vehicle?.model, vehicle?.plateNumber]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+
+  return details.join(" ");
+}
+
 function normalizeCanadianPhoneNumber(value: string) {
   const digits = value.replace(/\D/g, "");
   const localNumber = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
@@ -174,6 +198,37 @@ function formatLocalDate(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatDateOfBirthDisplay(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return value;
+  }
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${match[1]}-${months[Number(match[2]) - 1]}-${match[3]}`;
+}
+
+function isEligibleCustomerAge(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  const dateOfBirth = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(dateOfBirth.getTime())) {
+    return false;
+  }
+
+  const latestEligibleBirthDate = getLatestEligibleBirthDate();
+  latestEligibleBirthDate.setHours(0, 0, 0, 0);
+  return dateOfBirth <= latestEligibleBirthDate;
+}
+
+function getLatestEligibleBirthDate() {
+  const latestEligibleBirthDate = new Date();
+  latestEligibleBirthDate.setFullYear(latestEligibleBirthDate.getFullYear() - 18);
+  return latestEligibleBirthDate;
 }
 
 function getDefaultScheduledTime() {
@@ -529,6 +584,19 @@ function MapSurface({
     preferCanadaFallback ? "fallback:canada" : "fallback:current"
   ].join("|");
   const [routeShape, setRouteShape] = useState<any>(null);
+  const [mapLayoutVersion, setMapLayoutVersion] = useState(0);
+  const hasMeasuredMapRef = useRef(false);
+
+  function handleMapLayout(event: { nativeEvent: { layout: { width: number; height: number } } }) {
+    const { width, height } = event.nativeEvent.layout;
+    if (hasMeasuredMapRef.current || width <= 0 || height <= 0) {
+      return;
+    }
+
+    // iOS can mount Mapbox before a compact preview has dimensions. Remount once sized.
+    hasMeasuredMapRef.current = true;
+    requestAnimationFrame(() => setMapLayoutVersion(1));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -558,52 +626,52 @@ function MapSurface({
   if (!mapboxToken) {
     return (
       <View style={styles.mapFallback}>
-        <Text style={styles.mapFallbackTitle}>Mapbox token needed</Text>
-        <Text style={styles.mapFallbackText}>
-          Add `EXPO_PUBLIC_MAPBOX_TOKEN` and run a custom Expo dev build to enable the live map.
-        </Text>
+        <Text style={styles.mapFallbackTitle}>Map unavailable</Text>
       </View>
     );
   }
 
   return (
-    <Mapbox.MapView
-      style={styles.map}
-      styleURL="mapbox://styles/mapbox/navigation-night-v1"
-      compassEnabled={false}
-      logoEnabled={false}
-      attributionEnabled={false}
-      scrollEnabled={interactive}
-      zoomEnabled={interactive}
-      rotateEnabled={interactive}
-      pitchEnabled={interactive}
-      onPress={onPress}
-    >
-      <Mapbox.Camera key={cameraKey} {...cameraProps} />
-      {currentLocation && !pickup ? (
-        <Mapbox.PointAnnotation id="current-location" coordinate={[currentLocation.longitude, currentLocation.latitude]}>
-          <Marker color="#22C55E" variant="current" />
-        </Mapbox.PointAnnotation>
-      ) : null}
-      {pickup ? (
-        <Mapbox.PointAnnotation id="pickup" coordinate={[pickup.longitude, pickup.latitude]}>
-          <Marker color="#F97316" variant="pickup" />
-        </Mapbox.PointAnnotation>
-      ) : null}
-      {destination ? (
-        <Mapbox.PointAnnotation id="destination" coordinate={[destination.longitude, destination.latitude]}>
-          <Marker color="#2563EB" variant="destination" />
-        </Mapbox.PointAnnotation>
-      ) : null}
-      {routeShape ? (
-        <Mapbox.ShapeSource id="route" shape={routeShape}>
-          <Mapbox.LineLayer
-            id="route-line"
-            style={{ lineColor: "#60A5FA", lineWidth: 5, lineOpacity: 0.92, lineCap: "round", lineJoin: "round" }}
-          />
-        </Mapbox.ShapeSource>
-      ) : null}
-    </Mapbox.MapView>
+    <View style={styles.map} onLayout={handleMapLayout}>
+      <Mapbox.MapView
+        key={`${cameraKey}|layout:${mapLayoutVersion}`}
+        style={styles.mapFill}
+        styleURL="mapbox://styles/mapbox/navigation-night-v1"
+        compassEnabled={false}
+        logoEnabled={false}
+        attributionEnabled={false}
+        scrollEnabled={interactive}
+        zoomEnabled={interactive}
+        rotateEnabled={interactive}
+        pitchEnabled={interactive}
+        onPress={onPress}
+      >
+        <Mapbox.Camera key={cameraKey} {...cameraProps} />
+        {currentLocation && !pickup ? (
+          <Mapbox.PointAnnotation id="current-location" coordinate={[currentLocation.longitude, currentLocation.latitude]}>
+            <Marker color="#22C55E" variant="current" />
+          </Mapbox.PointAnnotation>
+        ) : null}
+        {pickup ? (
+          <Mapbox.PointAnnotation id="pickup" coordinate={[pickup.longitude, pickup.latitude]}>
+            <Marker color="#F97316" variant="pickup" />
+          </Mapbox.PointAnnotation>
+        ) : null}
+        {destination ? (
+          <Mapbox.PointAnnotation id="destination" coordinate={[destination.longitude, destination.latitude]}>
+            <Marker color="#2563EB" variant="destination" />
+          </Mapbox.PointAnnotation>
+        ) : null}
+        {routeShape ? (
+          <Mapbox.ShapeSource id="route" shape={routeShape}>
+            <Mapbox.LineLayer
+              id="route-line"
+              style={{ lineColor: "#60A5FA", lineWidth: 5, lineOpacity: 0.92, lineCap: "round", lineJoin: "round" }}
+            />
+          </Mapbox.ShapeSource>
+        ) : null}
+      </Mapbox.MapView>
+    </View>
   );
 }
 
@@ -611,6 +679,9 @@ export default function App() {
   const insets = useSafeAreaInsets();
   const defaults = getDefaultScheduledTime();
   const [session, setSession] = useState<Session | null>(null);
+  const sessionIssuedAtRef = useRef(Date.now());
+  const sessionRenewalInFlightRef = useRef(false);
+  const lastSessionActivityAtRef = useRef(Date.now());
   const [tab, setTab] = useState<Tab>("book");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -628,6 +699,7 @@ export default function App() {
   const [passwordResetBusy, setPasswordResetBusy] = useState(false);
   const [customerProfileSaving, setCustomerProfileSaving] = useState(false);
   const [showDateOfBirthPicker, setShowDateOfBirthPicker] = useState(false);
+  const [dateOfBirthPickerValue, setDateOfBirthPickerValue] = useState(new Date(1990, 0, 1));
   const [governmentPhotoId, setGovernmentPhotoId] = useState<GovernmentPhotoId | null>(null);
   const [customerAccountForm, setCustomerAccountForm] = useState({
     phone: "",
@@ -649,6 +721,9 @@ export default function App() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [mapState, setMapState] = useState<any>(null);
   const [estimate, setEstimate] = useState<any>(null);
+  const [preferredDrivers, setPreferredDrivers] = useState<PreferredDriver[]>([]);
+  const [preferredDriversLoading, setPreferredDriversLoading] = useState(false);
+  const [selectedPreferredDriverId, setSelectedPreferredDriverId] = useState<string | null>(null);
   const [tripMessages, setTripMessages] = useState<TripMessage[]>([]);
   const [tripMessageDraft, setTripMessageDraft] = useState("");
   const [tripMessagesBusy, setTripMessagesBusy] = useState(false);
@@ -680,28 +755,149 @@ export default function App() {
     scheduledTime: defaults.time,
     durationHours: 2,
     specialNotes: "",
-    vehicleDetails: "Toyota Camry - midnight blue",
+    vehicleDetails: "",
     zoneCode: "WPG-CENTRAL"
   });
   const isAndroidLoginMode = Platform.OS === "android";
+
+  function recordSessionActivity() {
+    if (session?.accessToken) {
+      lastSessionActivityAtRef.current = Date.now();
+    }
+  }
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    const expireIfInactive = () => {
+      if (Date.now() - lastSessionActivityAtRef.current >= SESSION_IDLE_TIMEOUT_MS) {
+        logout();
+        setStatus("Session expired. Please sign in again.");
+      }
+    };
+
+    const interval = setInterval(expireIfInactive, 60 * 1000);
+    const appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        expireIfInactive();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [session?.accessToken]);
+
+  useEffect(() => {
+    if (!session?.refreshToken) {
+      return;
+    }
+
+    sessionIssuedAtRef.current = Date.now();
+    let active = true;
+
+    const renew = async () => {
+      if (sessionRenewalInFlightRef.current) {
+        return;
+      }
+
+      sessionRenewalInFlightRef.current = true;
+      try {
+        const nextSession = await refreshSession(session.refreshToken);
+        if (active && isCustomerSession(nextSession)) {
+          setSession(nextSession);
+        }
+      } catch {
+        if (active) {
+          logout();
+          setStatus("Session expired. Please sign in again.");
+        }
+      } finally {
+        sessionRenewalInFlightRef.current = false;
+      }
+    };
+
+    const interval = setInterval(() => void renew(), 14 * 60 * 1000);
+    const appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active" && Date.now() - sessionIssuedAtRef.current >= 12 * 60 * 1000) {
+        void renew();
+      }
+    });
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [session?.refreshToken]);
   const isVerifiedCustomer = isVerifiedCustomerProfile(profile);
   const isCustomerReadyForBooking = isCustomerReadyToBook(profile);
 
   function keepAuthActionVisible() {
-    if (Platform.OS !== "android") {
-      return;
-    }
-
     setTimeout(() => {
       authScrollRef.current?.scrollToEnd({ animated: true });
-    }, 180);
+    }, Platform.OS === "ios" ? 300 : 180);
   }
 
   useEffect(() => {
-    if (mapboxToken) {
-      Mapbox.setAccessToken(mapboxToken);
+    if (session) {
+      return;
     }
-  }, []);
+
+    const showSubscription = Keyboard.addListener("keyboardDidShow", keepAuthActionVisible);
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      authScrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [session]);
+
+  async function openAccountPolicy(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setStatus("Unable to open this policy right now.");
+    }
+  }
+
+  function requestAccountDeletion() {
+    Alert.alert(
+      "Delete account",
+      "Continue to submit your account deletion request.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            WebBrowser.openBrowserAsync(deleteAccountUrl).catch(() => {
+              setStatus("Unable to open account deletion right now.");
+            });
+          }
+        }
+      ]
+    );
+  }
+
+  function showBookingVerificationRequired() {
+    const openAccount = () => {
+      setTab("account");
+      setStatus("");
+    };
+
+    Alert.alert(
+      "Verification required",
+      "You cannot book until you are verified.",
+      [{ text: "OK", onPress: openAccount }],
+      { cancelable: true, onDismiss: openAccount }
+    );
+  }
 
   useEffect(() => {
     return () => {
@@ -725,7 +921,15 @@ export default function App() {
       return;
     }
 
-    const primaryVehicle = Array.isArray(customerProfile?.vehicles) ? customerProfile.vehicles[0] : null;
+    const primaryVehicle = Array.isArray(customerProfile?.vehicles)
+      ? customerProfile.vehicles.find((vehicle: any) => vehicle.isPrimary) ?? customerProfile.vehicles[0]
+      : null;
+    const bookingVehicleDetails = formatBookingVehicleDetails(primaryVehicle);
+
+    if (bookingVehicleDetails) {
+      setForm((currentForm) => ({ ...currentForm, vehicleDetails: bookingVehicleDetails }));
+    }
+
     setCustomerAccountForm({
       phone: formatCanadianPhoneNumber(profile.phone ?? ""),
       dateOfBirth: customerProfile?.dateOfBirth ? String(customerProfile.dateOfBirth).slice(0, 10) : "",
@@ -819,6 +1023,68 @@ export default function App() {
     form.zoneCode,
     scheduleMode,
     session
+  ]);
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      setPreferredDrivers([]);
+      setSelectedPreferredDriverId(null);
+      return;
+    }
+
+    const pickupLat = Number(form.pickupLat);
+    const pickupLng = Number(form.pickupLng);
+    if (!form.pickupLocation.trim() || !Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
+      setPreferredDrivers([]);
+      setSelectedPreferredDriverId(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPreferredDriversLoading(true);
+    const timeout = setTimeout(() => {
+      const scheduledStartAt =
+        scheduleMode === "now" ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : toIso(form.scheduledDate, form.scheduledTime);
+
+      fetchPreferredDrivers(session.accessToken, {
+        requestType: scheduleMode === "now" ? "NOW" : "LATER",
+        pickupLocation: form.pickupLocation.trim(),
+        pickupLat,
+        pickupLng,
+        scheduledStartAt,
+        expectedDurationMinutes: clampDurationHours(Number(form.durationHours) || 0) * 60,
+        zoneCode: form.zoneCode
+      })
+        .then((drivers) => {
+          if (cancelled) return;
+          setPreferredDrivers(drivers);
+          setSelectedPreferredDriverId((selectedId) => (drivers.some((driver) => driver.id === selectedId) ? selectedId : null));
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setPreferredDrivers([]);
+            setSelectedPreferredDriverId(null);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setPreferredDriversLoading(false);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [
+    form.durationHours,
+    form.pickupLat,
+    form.pickupLng,
+    form.pickupLocation,
+    form.scheduledDate,
+    form.scheduledTime,
+    form.zoneCode,
+    scheduleMode,
+    session?.accessToken
   ]);
 
   useEffect(() => {
@@ -1189,6 +1455,7 @@ export default function App() {
         setStatus("Use a customer account to sign in.");
         return;
       }
+      lastSessionActivityAtRef.current = Date.now();
       setSession(nextSession);
       setStatus("");
     } catch (error) {
@@ -1404,8 +1671,7 @@ export default function App() {
     }
 
     if (!isCustomerReadyForBooking) {
-      setTab("account");
-      setStatus("LET'S GET YOU VERIFIED");
+      showBookingVerificationRequired();
       return;
     }
 
@@ -1458,6 +1724,7 @@ export default function App() {
         expectedDurationMinutes: clampDurationHours(Number(form.durationHours) || 0) * 60,
         specialNotes: form.specialNotes.trim() || undefined,
         vehicleDetails: form.vehicleDetails.trim() || undefined,
+        preferredDriverId: selectedPreferredDriverId ?? undefined,
         zoneCode: form.zoneCode
       });
 
@@ -1466,12 +1733,23 @@ export default function App() {
         throw new Error("Booking was created, but checkout could not be started. Please refresh and try again.");
       }
 
+      if (result?.reusedPendingBooking) {
+        setStatus("An identical booking is already awaiting payment.");
+        setTab("trips");
+        await refreshDashboard();
+        return;
+      }
+
       setStatus("Booking created. Complete payment to start driver matching.");
       setTab("trips");
       await refreshDashboard();
       await openCheckoutForBooking(bookingId, false);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to submit your booking.");
+      if ((error as { code?: string })?.code === "CUSTOMER_VERIFICATION_REQUIRED") {
+        showBookingVerificationRequired();
+      } else {
+        setStatus(error instanceof Error ? error.message : "Unable to submit your booking.");
+      }
     } finally {
       setBusy(false);
     }
@@ -1532,10 +1810,8 @@ export default function App() {
       return;
     }
 
-    const emergencyPhone = customerAccountForm.emergencyContactPhone.trim()
-      ? normalizeCanadianPhoneNumber(customerAccountForm.emergencyContactPhone)
-      : null;
-    if (customerAccountForm.emergencyContactPhone.trim() && !emergencyPhone) {
+    const emergencyPhone = normalizeCanadianPhoneNumber(customerAccountForm.emergencyContactPhone);
+    if (!emergencyPhone) {
       setStatus("Enter a valid Canadian emergency phone number.");
       return;
     }
@@ -1552,10 +1828,35 @@ export default function App() {
       customerAccountForm.licencePlate.trim(),
       customerAccountForm.registrationProvince.trim()
     ];
-    const hasVehicleDetails = vehicleValues.some(Boolean);
     const hasCompleteVehicleDetails = vehicleValues.every(Boolean);
-    if (hasVehicleDetails && !hasCompleteVehicleDetails) {
+    if (!customerAccountForm.dateOfBirth || !customerAccountForm.primaryAddress.trim() || !customerAccountForm.emergencyContactName.trim()) {
+      setStatus("Complete all required personal and emergency contact details.");
+      return;
+    }
+
+    if (!isEligibleCustomerAge(customerAccountForm.dateOfBirth)) {
+      setStatus("You must be 18 or older to use ChaufX.");
+      return;
+    }
+
+    if (!hasCompleteVehicleDetails) {
       setStatus("Complete the vehicle make, model, licence plate, and province of registration.");
+      return;
+    }
+
+    if (!governmentPhotoId && !profile?.customerProfile?.identityDocument) {
+      setStatus("Add a government issued photo ID.");
+      return;
+    }
+
+    if (
+      !customerAccountForm.vehicleComplianceConfirmed ||
+      !customerAccountForm.termsAccepted ||
+      !customerAccountForm.privacyPolicyAccepted ||
+      !customerAccountForm.identityVerificationConsented ||
+      !customerAccountForm.vehicleAuthorityConfirmed
+    ) {
+      setStatus("Confirm all required acknowledgements.");
       return;
     }
 
@@ -2011,6 +2312,7 @@ export default function App() {
             ]}
             keyboardShouldPersistTaps="always"
             keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
             showsVerticalScrollIndicator={false}
             scrollEnabled
           >
@@ -2022,7 +2324,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} onTouchStart={recordSessionActivity}>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={styles.keyboardWrap}
@@ -2181,6 +2483,45 @@ export default function App() {
               />
             </View>
 
+            {preferredDrivers.length > 0 || preferredDriversLoading ? (
+              <View style={styles.preferredDriversCard}>
+                <View style={styles.preferredDriversHeader}>
+                  <Text style={styles.preferredDriversTitle}>Drive with again</Text>
+                  {preferredDriversLoading ? <ActivityIndicator size="small" color="#2563EB" /> : null}
+                </View>
+                <Pressable
+                  style={[styles.noPreferenceButton, !selectedPreferredDriverId && styles.preferredDriverSelected]}
+                  onPress={() => setSelectedPreferredDriverId(null)}
+                >
+                  <Text style={[styles.noPreferenceText, !selectedPreferredDriverId && styles.preferredDriverSelectedText]}>No preference</Text>
+                </Pressable>
+                {preferredDrivers.map((driver) => {
+                  const selected = driver.id === selectedPreferredDriverId;
+                  const rating = driver.averageRating ? driver.averageRating.toFixed(1) : String(driver.customerRating);
+                  return (
+                    <Pressable
+                      key={driver.id}
+                      style={[styles.preferredDriverRow, selected && styles.preferredDriverSelected]}
+                      onPress={() => setSelectedPreferredDriverId(driver.id)}
+                    >
+                      <View style={styles.preferredDriverAvatar}>
+                        <Text style={styles.preferredDriverAvatarText}>{driver.displayName.slice(0, 1)}</Text>
+                      </View>
+                      <View style={styles.preferredDriverCopy}>
+                        <Text style={[styles.preferredDriverName, selected && styles.preferredDriverSelectedText]}>{driver.displayName}</Text>
+                        <Text style={[styles.preferredDriverMeta, selected && styles.preferredDriverSelectedMeta]}>
+                          {`★ ${rating} · Your rating ${driver.customerRating}/5 · ${driver.completedTripsWithYou} trip${driver.completedTripsWithYou === 1 ? "" : "s"}`}
+                        </Text>
+                      </View>
+                      <View style={[styles.preferredDriverCheck, selected && styles.preferredDriverCheckSelected]}>
+                        {selected ? <Text style={styles.preferredDriverCheckText}>✓</Text> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
             <Text style={styles.panelTitle}>Request ride</Text>
             <View style={styles.modeRow}>
               {[
@@ -2281,12 +2622,14 @@ export default function App() {
                   <Text style={styles.estimateValue}>
                     {estimate?.fareEstimate ? `$${Number(estimate.fareEstimate).toFixed(2)}` : "Pending"}
                   </Text>
+                  {estimate?.membershipApplied ? (
+                    <Text style={styles.estimateMeta}>
+                      {Number(estimate.membershipSavings) > 0
+                        ? `Membership savings: $${Number(estimate.membershipSavings).toFixed(2)} CAD`
+                        : `${String(estimate.pricingMembershipTier ?? "Member").toLowerCase().replace(/(^|_)([a-z])/g, (_match: string, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`)} member rate: $${Number(estimate.flatFee).toFixed(2)}/hour`}
+                    </Text>
+                  ) : null}
                 </View>
-                <Text style={styles.estimateMeta}>
-                  {estimate?.billableHours
-                    ? `${estimate.billableHours} billable hour${estimate.billableHours === 1 ? "" : "s"} at $${estimate.flatFeePerHour}/hour`
-                    : ""}
-                </Text>
               </View>
             </View>
 
@@ -2308,7 +2651,7 @@ export default function App() {
                   </View>
                   {["awaiting_payment", "pending", "accepted"].includes(String(activeBooking.status).toLowerCase()) ? (
                     <Pressable onPress={() => handleCancel(activeBooking.id)}>
-                      <Text style={styles.linkText}>Cancel</Text>
+                      <Text style={styles.linkText}>{String(activeBooking.status).toLowerCase() === "awaiting_payment" ? "Cancel payment" : "Cancel booking"}</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -2397,7 +2740,6 @@ export default function App() {
             {!isCustomerReadyForBooking ? (
               <View style={styles.bookingVerificationCard}>
                 <Text style={styles.bookingVerificationTitle}>LET’S GET YOU VERIFIED</Text>
-                <Text style={styles.bookingVerificationCopy}>Your safety — and your driver’s — matters to us.</Text>
                 <Text style={styles.bookingVerificationStep}>1. Add your phone number</Text>
                 <Text style={styles.bookingVerificationStep}>2. Confirm your identity</Text>
                 <Text style={styles.bookingVerificationStep}>3. Add your vehicle</Text>
@@ -2408,13 +2750,13 @@ export default function App() {
                 <Text style={styles.verifiedCustomerBadgeText}>✓ CHAUFX VERIFIED CUSTOMER</Text>
               </View>
             ) : null}
-            <View style={styles.accountRow}>
+            <View style={styles.accountIdentityRow}>
               <Text style={styles.accountLabel}>Name</Text>
-              <Text style={styles.accountValue}>{profile?.fullName ?? session.user.fullName}</Text>
+              <Text style={styles.accountValue} numberOfLines={1}>{profile?.fullName ?? session.user.fullName}</Text>
             </View>
-            <View style={styles.accountRow}>
+            <View style={styles.accountIdentityRow}>
               <Text style={styles.accountLabel}>Email</Text>
-              <Text style={styles.accountValue}>{profile?.email ?? session.user.email}</Text>
+              <Text style={styles.accountValue} numberOfLines={1}>{profile?.email ?? session.user.email}</Text>
             </View>
 
             <View style={styles.accountFormSection}>
@@ -2430,26 +2772,55 @@ export default function App() {
                 value={customerAccountForm.phone}
                 onChangeText={(value) => setCustomerAccountForm((current) => ({ ...current, phone: formatCanadianPhoneNumber(value) }))}
               />
-              <Pressable style={styles.accountTextInput} onPress={() => setShowDateOfBirthPicker((visible) => !visible)}>
+              <Pressable
+                style={styles.accountTextInput}
+                onPress={() => {
+                  setDateOfBirthPickerValue(
+                    customerAccountForm.dateOfBirth
+                      ? new Date(`${customerAccountForm.dateOfBirth}T12:00:00`)
+                      : new Date(1990, 0, 1)
+                  );
+                  setShowDateOfBirthPicker(true);
+                }}
+              >
                 <Text style={customerAccountForm.dateOfBirth ? styles.accountTextInputValue : styles.accountTextInputPlaceholder}>
-                  {customerAccountForm.dateOfBirth || "Date of birth"}
+                  {customerAccountForm.dateOfBirth ? formatDateOfBirthDisplay(customerAccountForm.dateOfBirth) : "Date of birth"}
                 </Text>
               </Pressable>
               {showDateOfBirthPicker ? (
-                <DateTimePicker
-                  value={customerAccountForm.dateOfBirth ? new Date(`${customerAccountForm.dateOfBirth}T12:00:00`) : new Date(1990, 0, 1)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  maximumDate={new Date()}
-                  onChange={(event, value) => {
-                    if (Platform.OS === "android") {
+                <View style={styles.dateOfBirthPickerWrap}>
+                  <DateTimePicker
+                    value={dateOfBirthPickerValue}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    minimumDate={new Date(1900, 0, 1)}
+                    maximumDate={getLatestEligibleBirthDate()}
+                    onChange={(event, value) => {
+                      if (Platform.OS === "ios") {
+                        if (value) {
+                          setDateOfBirthPickerValue(value);
+                        }
+                        return;
+                      }
+
+                      if (event.type === "set" && value) {
+                        setCustomerAccountForm((current) => ({ ...current, dateOfBirth: formatLocalDate(value) }));
+                      }
                       setShowDateOfBirthPicker(false);
-                    }
-                    if (event.type === "set" && value) {
-                      setCustomerAccountForm((current) => ({ ...current, dateOfBirth: formatLocalDate(value) }));
-                    }
-                  }}
-                />
+                    }}
+                  />
+                  {Platform.OS === "ios" ? (
+                    <Pressable
+                      style={styles.dateOfBirthDoneButton}
+                      onPress={() => {
+                        setCustomerAccountForm((current) => ({ ...current, dateOfBirth: formatLocalDate(dateOfBirthPickerValue) }));
+                        setShowDateOfBirthPicker(false);
+                      }}
+                    >
+                      <Text style={styles.dateOfBirthDoneText}>Done</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : null}
               <TextInput
                 style={styles.accountTextInput}
@@ -2534,8 +2905,9 @@ export default function App() {
 
             <View style={styles.accountFormSection}>
               <Text style={styles.accountSectionTitle}>Confirmations</Text>
-              <Pressable
-                style={styles.confirmationRow}
+              <View style={styles.confirmationRow}>
+                <Pressable
+                  style={styles.confirmationToggle}
                 onPress={() =>
                   setCustomerAccountForm((current) => ({
                     ...current,
@@ -2548,12 +2920,15 @@ export default function App() {
                 <View style={[styles.confirmationBox, customerAccountForm.vehicleComplianceConfirmed && styles.confirmationBoxSelected]}>
                   <Text style={styles.confirmationMark}>{customerAccountForm.vehicleComplianceConfirmed ? "✓" : ""}</Text>
                 </View>
+                </Pressable>
                 <Text style={styles.confirmationText}>
-                  My vehicle is properly registered, fully insured, and meets Canadian road safety requirements.
+                  My vehicle is properly registered, fully insured, and meets Canadian road safety requirements. Read{" "}
+                  <Text style={styles.confirmationLink} onPress={() => openAccountPolicy(termsUrl)}>Terms & Conditions</Text>.
                 </Text>
-              </Pressable>
-              <Pressable
-                style={styles.confirmationRow}
+              </View>
+              <View style={styles.confirmationRow}>
+                <Pressable
+                  style={styles.confirmationToggle}
                 onPress={() => setCustomerAccountForm((current) => ({ ...current, termsAccepted: !current.termsAccepted }))}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: customerAccountForm.termsAccepted }}
@@ -2561,10 +2936,14 @@ export default function App() {
                 <View style={[styles.confirmationBox, customerAccountForm.termsAccepted && styles.confirmationBoxSelected]}>
                   <Text style={styles.confirmationMark}>{customerAccountForm.termsAccepted ? "✓" : ""}</Text>
                 </View>
-                <Text style={styles.confirmationText}>I accept the ChaufX Terms & Conditions.</Text>
-              </Pressable>
-              <Pressable
-                style={styles.confirmationRow}
+                </Pressable>
+                <Text style={styles.confirmationText}>
+                  I accept the ChaufX <Text style={styles.confirmationLink} onPress={() => openAccountPolicy(termsUrl)}>Terms & Conditions</Text>.
+                </Text>
+              </View>
+              <View style={styles.confirmationRow}>
+                <Pressable
+                  style={styles.confirmationToggle}
                 onPress={() => setCustomerAccountForm((current) => ({ ...current, privacyPolicyAccepted: !current.privacyPolicyAccepted }))}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: customerAccountForm.privacyPolicyAccepted }}
@@ -2572,10 +2951,14 @@ export default function App() {
                 <View style={[styles.confirmationBox, customerAccountForm.privacyPolicyAccepted && styles.confirmationBoxSelected]}>
                   <Text style={styles.confirmationMark}>{customerAccountForm.privacyPolicyAccepted ? "✓" : ""}</Text>
                 </View>
-                <Text style={styles.confirmationText}>I accept the Privacy Policy.</Text>
-              </Pressable>
-              <Pressable
-                style={styles.confirmationRow}
+                </Pressable>
+                <Text style={styles.confirmationText}>
+                  I accept the <Text style={styles.confirmationLink} onPress={() => openAccountPolicy(privacyPolicyUrl)}>Privacy Policy</Text>.
+                </Text>
+              </View>
+              <View style={styles.confirmationRow}>
+                <Pressable
+                  style={styles.confirmationToggle}
                 onPress={() =>
                   setCustomerAccountForm((current) => ({
                     ...current,
@@ -2588,10 +2971,14 @@ export default function App() {
                 <View style={[styles.confirmationBox, customerAccountForm.identityVerificationConsented && styles.confirmationBoxSelected]}>
                   <Text style={styles.confirmationMark}>{customerAccountForm.identityVerificationConsented ? "✓" : ""}</Text>
                 </View>
-                <Text style={styles.confirmationText}>I consent to identity verification.</Text>
-              </Pressable>
-              <Pressable
-                style={styles.confirmationRow}
+                </Pressable>
+                <Text style={styles.confirmationText}>
+                  I consent to identity verification under the <Text style={styles.confirmationLink} onPress={() => openAccountPolicy(privacyPolicyUrl)}>Privacy Policy</Text>.
+                </Text>
+              </View>
+              <View style={styles.confirmationRow}>
+                <Pressable
+                  style={styles.confirmationToggle}
                 onPress={() =>
                   setCustomerAccountForm((current) => ({
                     ...current,
@@ -2604,8 +2991,12 @@ export default function App() {
                 <View style={[styles.confirmationBox, customerAccountForm.vehicleAuthorityConfirmed && styles.confirmationBoxSelected]}>
                   <Text style={styles.confirmationMark}>{customerAccountForm.vehicleAuthorityConfirmed ? "✓" : ""}</Text>
                 </View>
-                <Text style={styles.confirmationText}>I have authority to allow the driver to operate this vehicle.</Text>
-              </Pressable>
+                </Pressable>
+                <Text style={styles.confirmationText}>
+                  I have authority to allow the driver to operate this vehicle. Read{" "}
+                  <Text style={styles.confirmationLink} onPress={() => openAccountPolicy(termsUrl)}>Terms & Conditions</Text>.
+                </Text>
+              </View>
             </View>
 
             <Pressable
@@ -2614,6 +3005,9 @@ export default function App() {
               onPress={handleSaveCustomerProfile}
             >
               {customerProfileSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Save account details</Text>}
+            </Pressable>
+            <Pressable style={styles.deleteAccountButton} onPress={requestAccountDeletion} accessibilityRole="button">
+              <Text style={styles.deleteAccountButtonText}>Delete account</Text>
             </Pressable>
             <Pressable style={styles.secondaryButton} onPress={logout}>
               <Text style={styles.secondaryButtonText}>Log out</Text>
@@ -2668,7 +3062,7 @@ export default function App() {
                   disabled={busy}
                   onPress={() => handleCancel(awaitingPaymentBooking.id)}
                 >
-                  <Text style={styles.paymentGateCancelText}>Cancel booking</Text>
+                  <Text style={styles.paymentGateCancelText}>Cancel payment</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -2879,6 +3273,9 @@ const styles = StyleSheet.create({
   map: {
     flex: 1
   },
+  mapFill: {
+    ...StyleSheet.absoluteFillObject
+  },
   mapFallback: {
     flex: 1,
     justifyContent: "center",
@@ -3056,12 +3453,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     letterSpacing: 0.8
-  },
-  bookingVerificationCopy: {
-    color: "#334155",
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 3
   },
   bookingVerificationStep: {
     color: "#0F172A",
@@ -3257,6 +3648,19 @@ const styles = StyleSheet.create({
     color: "#4338CA",
     fontWeight: "700"
   },
+  deleteAccountButton: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    backgroundColor: "#FFF1F2",
+    paddingVertical: 14,
+    alignItems: "center"
+  },
+  deleteAccountButtonText: {
+    color: "#BE123C",
+    fontSize: 16,
+    fontWeight: "800"
+  },
   primaryButton: {
     borderRadius: 18,
     backgroundColor: "#2563EB",
@@ -3275,6 +3679,103 @@ const styles = StyleSheet.create({
   modeRow: {
     flexDirection: "row",
     gap: 10
+  },
+  preferredDriversCard: {
+    borderRadius: 20,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    padding: 12,
+    gap: 8
+  },
+  preferredDriversHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  preferredDriversTitle: {
+    color: "#0F172A",
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  noPreferenceButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  noPreferenceText: {
+    color: "#475569",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  preferredDriverRow: {
+    minHeight: 64,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    backgroundColor: "#FFFFFF",
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  preferredDriverSelected: {
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF"
+  },
+  preferredDriverAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#DBEAFE",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  preferredDriverAvatarText: {
+    color: "#1D4ED8",
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  preferredDriverCopy: {
+    flex: 1,
+    gap: 3
+  },
+  preferredDriverName: {
+    color: "#0F172A",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  preferredDriverMeta: {
+    color: "#64748B",
+    fontSize: 12,
+    lineHeight: 17
+  },
+  preferredDriverSelectedText: {
+    color: "#1E3A8A"
+  },
+  preferredDriverSelectedMeta: {
+    color: "#1D4ED8"
+  },
+  preferredDriverCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  preferredDriverCheckSelected: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB"
+  },
+  preferredDriverCheckText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800"
   },
   modeButton: {
     flex: 1,
@@ -3827,12 +4328,17 @@ const styles = StyleSheet.create({
     color: "#64748B",
     fontSize: 15
   },
-  accountRow: {
+  accountIdentityRow: {
     borderRadius: 18,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    padding: 16
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16
   },
   accountLabel: {
     color: "#64748B",
@@ -3845,7 +4351,8 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     fontSize: 16,
     fontWeight: "700",
-    marginTop: 6
+    flexShrink: 1,
+    textAlign: "right"
   },
   verifiedCustomerBadge: {
     alignSelf: "flex-start",
@@ -3891,6 +4398,27 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
     fontSize: 15
   },
+  dateOfBirthPickerWrap: {
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9E1EC",
+    overflow: "hidden"
+  },
+  dateOfBirthDoneButton: {
+    alignSelf: "flex-end",
+    marginRight: 12,
+    marginBottom: 12,
+    borderRadius: 999,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 18,
+    paddingVertical: 9
+  },
+  dateOfBirthDoneText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700"
+  },
   accountDocumentStatus: {
     color: "#64748B",
     fontSize: 14,
@@ -3901,6 +4429,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 10,
     paddingVertical: 5
+  },
+  confirmationToggle: {
+    padding: 0
   },
   confirmationBox: {
     width: 22,
@@ -3927,6 +4458,11 @@ const styles = StyleSheet.create({
     color: "#334155",
     fontSize: 14,
     lineHeight: 20
+  },
+  confirmationLink: {
+    color: "#2563EB",
+    fontWeight: "800",
+    textDecorationLine: "underline"
   },
   androidPickerOverlay: {
     flex: 1,

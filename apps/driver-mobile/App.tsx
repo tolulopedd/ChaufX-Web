@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -34,17 +35,19 @@ import {
   markNotificationRead,
   notifyTripArrival,
   rejectBooking,
+  refreshSession,
   requestPasswordReset,
   registerPushDevice,
   sendTripMessage,
   setAvailability,
   shareLocation,
   startTrip,
+  type Session,
   type TripMessage,
   updateDriverLocation
 } from "./src/lib/api";
 
-type Tab = "home" | "account";
+type Tab = "home" | "earnings" | "account";
 type Coordinate = { latitude: number; longitude: number };
 type AppNotification = {
   id: string;
@@ -67,8 +70,13 @@ const logo = require("./assets/chaufx-mark.png");
 const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
 const pushNotificationsEnabled = process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS === "true";
 const CANADA_MAP_FALLBACK: Coordinate = { latitude: 56.1304, longitude: -106.3468 };
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const driverQuickTripMessages = ["I'll be with you shortly.", "I'm on the way.", "I'm outside now."];
 let notificationsModulePromise: Promise<NotificationsModule | null> | null = null;
+
+if (mapboxToken) {
+  Mapbox.setAccessToken(mapboxToken);
+}
 
 function isSessionExpiredError(error: unknown) {
   return error instanceof Error && error.message === "Session expired. Please sign in again.";
@@ -260,11 +268,6 @@ function formatDriverCurrency(amount?: number | null) {
     currency: "CAD",
     maximumFractionDigits: 2
   }).format(Number.isFinite(numericAmount) ? numericAmount : 0);
-}
-
-function hasDriverEarnings(profile: any) {
-  const completedPaidTripsCount = Number(profile?.settlementSummary?.completedPaidTripsCount ?? 0);
-  return Number.isFinite(completedPaidTripsCount) && completedPaidTripsCount > 0;
 }
 
 function formatHours(expectedDurationMinutes?: number) {
@@ -477,7 +480,26 @@ function DriverMap({
     center,
     primaryPoint ? 12.6 : 3.2
   );
+  const cameraKey = [
+    driverCoordinate ? `driver:${driverCoordinate.latitude.toFixed(6)},${driverCoordinate.longitude.toFixed(6)}` : "driver:none",
+    pickupCoordinate ? `pickup:${pickupCoordinate.latitude.toFixed(6)},${pickupCoordinate.longitude.toFixed(6)}` : "pickup:none",
+    destinationCoordinate
+      ? `destination:${destinationCoordinate.latitude.toFixed(6)},${destinationCoordinate.longitude.toFixed(6)}`
+      : "destination:none"
+  ].join("|");
   const [routeShape, setRouteShape] = useState<any>(null);
+  const [mapLayoutVersion, setMapLayoutVersion] = useState(0);
+  const hasMeasuredMapRef = useRef(false);
+
+  function handleMapLayout(event: { nativeEvent: { layout: { width: number; height: number } } }) {
+    const { width, height } = event.nativeEvent.layout;
+    if (hasMeasuredMapRef.current || width <= 0 || height <= 0) {
+      return;
+    }
+
+    hasMeasuredMapRef.current = true;
+    requestAnimationFrame(() => setMapLayoutVersion(1));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -507,54 +529,57 @@ function DriverMap({
   if (!mapboxToken) {
     return (
       <View style={styles.mapFallback}>
-        <Text style={styles.mapFallbackTitle}>Mapbox token needed</Text>
-        <Text style={styles.mapFallbackText}>
-          Add `EXPO_PUBLIC_MAPBOX_TOKEN` and run a custom Expo dev build to enable live maps.
-        </Text>
+        <Text style={styles.mapFallbackTitle}>Map unavailable</Text>
       </View>
     );
   }
 
   return (
-    <Mapbox.MapView
-      style={styles.map}
-      styleURL="mapbox://styles/mapbox/navigation-night-v1"
-      compassEnabled={false}
-      logoEnabled={false}
-      attributionEnabled={false}
-      scrollEnabled={interactive}
-      zoomEnabled={interactive}
-      rotateEnabled={interactive}
-      pitchEnabled={interactive}
-      onPress={onPress}
-    >
-      <Mapbox.Camera {...cameraProps} />
-      {driverCoordinate ? <Mapbox.LocationPuck visible puckBearingEnabled puckBearing="heading" /> : null}
-      {pickupCoordinate ? (
-        <Mapbox.PointAnnotation id="pickup" coordinate={[pickupCoordinate.longitude, pickupCoordinate.latitude]}>
-          <Marker color="#EA580C" variant="pickup" />
-        </Mapbox.PointAnnotation>
-      ) : null}
-      {destinationCoordinate ? (
-        <Mapbox.PointAnnotation id="dropoff" coordinate={[destinationCoordinate.longitude, destinationCoordinate.latitude]}>
-          <Marker color="#2563EB" variant="destination" />
-        </Mapbox.PointAnnotation>
-      ) : null}
-      {routeShape ? (
-        <Mapbox.ShapeSource id="route" shape={routeShape}>
-          <Mapbox.LineLayer
-            id="route-line"
-            style={{ lineColor: "#60A5FA", lineWidth: 5, lineOpacity: 0.92, lineCap: "round", lineJoin: "round" }}
-          />
-        </Mapbox.ShapeSource>
-      ) : null}
-    </Mapbox.MapView>
+    <View style={styles.map} onLayout={handleMapLayout}>
+      <Mapbox.MapView
+        key={`${cameraKey}|layout:${mapLayoutVersion}`}
+        style={styles.mapFill}
+        styleURL="mapbox://styles/mapbox/navigation-night-v1"
+        compassEnabled={false}
+        logoEnabled={false}
+        attributionEnabled={false}
+        scrollEnabled={interactive}
+        zoomEnabled={interactive}
+        rotateEnabled={interactive}
+        pitchEnabled={interactive}
+        onPress={onPress}
+      >
+        <Mapbox.Camera key={cameraKey} {...cameraProps} />
+        {driverCoordinate ? <Mapbox.LocationPuck visible puckBearingEnabled puckBearing="heading" /> : null}
+        {pickupCoordinate ? (
+          <Mapbox.PointAnnotation id="pickup" coordinate={[pickupCoordinate.longitude, pickupCoordinate.latitude]}>
+            <Marker color="#EA580C" variant="pickup" />
+          </Mapbox.PointAnnotation>
+        ) : null}
+        {destinationCoordinate ? (
+          <Mapbox.PointAnnotation id="dropoff" coordinate={[destinationCoordinate.longitude, destinationCoordinate.latitude]}>
+            <Marker color="#2563EB" variant="destination" />
+          </Mapbox.PointAnnotation>
+        ) : null}
+        {routeShape ? (
+          <Mapbox.ShapeSource id="route" shape={routeShape}>
+            <Mapbox.LineLayer
+              id="route-line"
+              style={{ lineColor: "#60A5FA", lineWidth: 5, lineOpacity: 0.92, lineCap: "round", lineJoin: "round" }}
+            />
+          </Mapbox.ShapeSource>
+        ) : null}
+      </Mapbox.MapView>
+    </View>
   );
 }
 
 export default function App() {
   const insets = useSafeAreaInsets();
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const sessionIssuedAtRef = useRef(Date.now());
+  const sessionRenewalInFlightRef = useRef(false);
+  const lastSessionActivityAtRef = useRef(Date.now());
   const [tab, setTab] = useState<Tab>("home");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -589,11 +614,79 @@ export default function App() {
   const loginInFlightRef = useRef(false);
   const isAndroidLoginMode = Platform.OS === "android";
 
-  useEffect(() => {
-    if (mapboxToken) {
-      Mapbox.setAccessToken(mapboxToken);
+  function recordSessionActivity() {
+    if (session?.accessToken) {
+      lastSessionActivityAtRef.current = Date.now();
     }
-  }, []);
+  }
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    const expireIfInactive = () => {
+      if (Date.now() - lastSessionActivityAtRef.current >= SESSION_IDLE_TIMEOUT_MS) {
+        logout();
+        setStatus("Session expired. Please sign in again.");
+      }
+    };
+
+    const interval = setInterval(expireIfInactive, 60 * 1000);
+    const appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        expireIfInactive();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [session?.accessToken]);
+
+  useEffect(() => {
+    if (!session?.refreshToken) {
+      return;
+    }
+
+    sessionIssuedAtRef.current = Date.now();
+    let active = true;
+
+    const renew = async () => {
+      if (sessionRenewalInFlightRef.current) {
+        return;
+      }
+
+      sessionRenewalInFlightRef.current = true;
+      try {
+        const nextSession = await refreshSession(session.refreshToken);
+        if (active && isDriverSession(nextSession)) {
+          setSession(nextSession);
+        }
+      } catch {
+        if (active) {
+          logout();
+          setStatus("Session expired. Please sign in again.");
+        }
+      } finally {
+        sessionRenewalInFlightRef.current = false;
+      }
+    };
+
+    const interval = setInterval(() => void renew(), 14 * 60 * 1000);
+    const appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active" && Date.now() - sessionIssuedAtRef.current >= 12 * 60 * 1000) {
+        void renew();
+      }
+    });
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [session?.refreshToken]);
 
   useEffect(() => {
     if (!session?.accessToken) {
@@ -1143,6 +1236,7 @@ export default function App() {
         setStatus("Use a driver account to sign in.");
         return;
       }
+      lastSessionActivityAtRef.current = Date.now();
       setSession(nextSession);
       setStatus("");
     } catch (error) {
@@ -1400,15 +1494,7 @@ export default function App() {
           style={[styles.loginLogo, isAndroidLoginMode ? styles.loginLogoCompact : null]}
           resizeMode="contain"
         />
-        <Text style={[styles.loginEyebrow, isAndroidLoginMode ? styles.loginEyebrowCompact : null]}>
-          DRIVER ACCESS
-        </Text>
         <Text style={[styles.loginTitle, isAndroidLoginMode ? styles.loginTitleCompact : null]}>Driver App</Text>
-        {!isAndroidLoginMode ? (
-          <Text style={styles.loginCopy}>
-            Go online, receive nearby requests, and unlock trip management tools.
-          </Text>
-        ) : null}
 
         <View style={[styles.loginCard, isAndroidLoginMode ? styles.loginCardCompact : null]}>
           <TextInput
@@ -1466,9 +1552,6 @@ export default function App() {
             <View style={styles.promptCard}>
               <Text style={styles.promptEyebrow}>Password reset</Text>
               <Text style={styles.promptTitle}>Reset your password</Text>
-              <Text style={styles.promptCopy}>
-                Enter the email address tied to your ChaufX driver account and we will send you a secure reset link.
-              </Text>
               <TextInput
                 placeholder="Enter your email"
                 placeholderTextColor="#94A3B8"
@@ -1527,7 +1610,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} onTouchStart={recordSessionActivity}>
       <StatusBar style="light" />
       <Modal visible={Boolean(activeIncomingRequest)} transparent animationType="fade" onRequestClose={() => setActiveRequestPromptId(null)}>
         <View style={styles.promptBackdrop}>
@@ -1663,8 +1746,17 @@ export default function App() {
               <Text style={styles.headerTitleName}>{driverProfile?.user?.fullName?.split(" ")[0] ?? "driver"}</Text>
             </Text>
           </View>
-          <Pressable style={styles.ghostButton} onPress={refreshDashboard}>
-            <Text style={styles.ghostButtonText}>{refreshing ? "Refreshing..." : "Refresh"}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
+            style={styles.ghostButton}
+            onPress={refreshDashboard}
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color="#E2E8F0" />
+            ) : (
+              <Text style={styles.ghostButtonIcon}>{"\u21BB"}</Text>
+            )}
           </Pressable>
         </View>
 
@@ -1793,6 +1885,7 @@ export default function App() {
         <View style={styles.tabRow}>
           {[
             ["home", "Home"],
+            ["earnings", "Earnings"],
             ["account", "Account"]
           ].map(([key, label]) => (
             <Pressable key={key} style={[styles.tabButton, tab === key && styles.tabButtonActive]} onPress={() => setTab(key as Tab)}>
@@ -1933,54 +2026,46 @@ export default function App() {
           </>
         ) : null}
 
+        {tab === "earnings" ? (
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Earnings</Text>
+            <View style={styles.earningsGrid}>
+              <View style={styles.earningsCard}>
+                <Text style={styles.earningsLabel}>This week</Text>
+                <Text style={styles.earningsValue}>
+                  {formatDriverCurrency(driverProfile?.settlementSummary?.currentWeekDriverShareAmount)}
+                </Text>
+                <Text style={styles.earningsDetail}>
+                  {Number(driverProfile?.settlementSummary?.currentWeekTripCount ?? 0)} completed paid trip(s)
+                </Text>
+              </View>
+              <View style={styles.earningsCard}>
+                <Text style={styles.earningsLabel}>Paid out</Text>
+                <Text style={styles.earningsValue}>
+                  {formatDriverCurrency(driverProfile?.settlementSummary?.paidOutDriverShareAmount)}
+                </Text>
+              </View>
+              <View style={styles.earningsCard}>
+                <Text style={styles.earningsLabel}>Lifetime earnings</Text>
+                <Text style={styles.earningsValue}>
+                  {formatDriverCurrency(driverProfile?.settlementSummary?.lifetimeDriverShareAmount)}
+                </Text>
+                <Text style={styles.earningsDetail}>
+                  {Number(driverProfile?.settlementSummary?.completedPaidTripsCount ?? 0)} completed paid trip(s)
+                </Text>
+              </View>
+              <View style={styles.earningsCard}>
+                <Text style={styles.earningsLabel}>Will be paid</Text>
+                <Text style={styles.earningsValue}>
+                  {formatDriverCurrency(driverProfile?.settlementSummary?.outstandingDriverShareAmount)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         {tab === "account" ? (
           <>
-            <View style={styles.panel}>
-              <Text style={styles.panelTitle}>Earnings</Text>
-              {hasDriverEarnings(driverProfile) ? (
-                <>
-                  <View style={styles.earningsGrid}>
-                    <View style={styles.earningsCard}>
-                      <Text style={styles.earningsLabel}>This week</Text>
-                      <Text style={styles.earningsValue}>
-                        {formatDriverCurrency(driverProfile?.settlementSummary?.currentWeekDriverShareAmount)}
-                      </Text>
-                      <Text style={styles.earningsDetail}>
-                        {Number(driverProfile?.settlementSummary?.currentWeekTripCount ?? 0)} completed paid trip(s)
-                      </Text>
-                    </View>
-                    <View style={styles.earningsCard}>
-                      <Text style={styles.earningsLabel}>Lifetime</Text>
-                      <Text style={styles.earningsValue}>
-                        {formatDriverCurrency(driverProfile?.settlementSummary?.lifetimeDriverShareAmount)}
-                      </Text>
-                      <Text style={styles.earningsDetail}>
-                        {Number(driverProfile?.settlementSummary?.completedPaidTripsCount ?? 0)} completed paid trip(s)
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.accountRow}>
-                    <Text style={styles.accountLabel}>Outstanding payout</Text>
-                    <Text style={styles.accountValue}>
-                      {formatDriverCurrency(driverProfile?.settlementSummary?.outstandingDriverShareAmount)}
-                    </Text>
-                  </View>
-                  <View style={styles.accountRow}>
-                    <Text style={styles.accountLabel}>Paid out</Text>
-                    <Text style={styles.accountValue}>
-                      {formatDriverCurrency(driverProfile?.settlementSummary?.paidOutDriverShareAmount)}
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <View style={styles.earningsEmptyCard}>
-                  <Text style={styles.earningsEmptyText}>
-                    No earnings.
-                  </Text>
-                </View>
-              )}
-            </View>
-
             <View style={styles.panel}>
               <Text style={styles.panelTitle}>Account</Text>
               <View style={styles.accountRow}>
@@ -2131,12 +2216,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.35)",
-    paddingHorizontal: 14,
-    paddingVertical: 9
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center"
   },
-  ghostButtonText: {
+  ghostButtonIcon: {
     color: "#E2E8F0",
-    fontWeight: "600"
+    fontSize: 24,
+    fontWeight: "600",
+    lineHeight: 26
   },
   mapCard: {
     height: 320,
@@ -2152,6 +2241,9 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1
+  },
+  mapFill: {
+    ...StyleSheet.absoluteFillObject
   },
   mapFallback: {
     flex: 1,
@@ -2682,18 +2774,6 @@ const styles = StyleSheet.create({
     color: "#64748B",
     fontSize: 13,
     lineHeight: 19
-  },
-  earningsEmptyCard: {
-    borderRadius: 18,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#D9E1EC",
-    padding: 14
-  },
-  earningsEmptyText: {
-    color: "#64748B",
-    fontSize: 14,
-    lineHeight: 21
   },
   accountRow: {
     borderRadius: 18,

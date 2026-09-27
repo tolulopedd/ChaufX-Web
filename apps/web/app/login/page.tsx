@@ -5,14 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AdminBrand } from "../../components/admin-brand";
 import {
-  clearStoredCustomerToken,
-  clearStoredDriverToken,
-  clearStoredToken,
+  clearStoredWebSessions,
   requestCustomerVerificationEmail,
   requestPasswordReset,
-  setStoredCustomerToken,
-  setStoredDriverToken,
-  setStoredToken,
+  setStoredAdminSession,
+  setStoredCustomerSession,
+  setStoredDriverSession,
   setStoredWebRole,
   webLogin
 } from "../../lib/api";
@@ -95,32 +93,30 @@ function LoginPageContent() {
     try {
       const result = await webLogin(loginEmail, loginPassword);
 
-      clearStoredToken();
-      clearStoredDriverToken();
-      clearStoredCustomerToken();
+      clearStoredWebSessions();
 
       if (result.user.role === "admin") {
-        setStoredToken(result.accessToken);
+        setStoredAdminSession(result);
         setStoredWebRole("admin");
         router.push("/dashboard");
         return;
       }
 
       if (result.user.role === "marketing") {
-        setStoredToken(result.accessToken);
+        setStoredAdminSession(result);
         setStoredWebRole("marketing");
         router.push("/blog-manager");
         return;
       }
 
       if (result.user.role === "driver") {
-        setStoredDriverToken(result.accessToken);
+        setStoredDriverSession(result);
         router.push("/driver/login");
         return;
       }
 
       if (result.user.role === "customer") {
-        setStoredCustomerToken(result.accessToken);
+        setStoredCustomerSession(result);
         router.push("/customer");
         return;
       }
@@ -156,9 +152,7 @@ function LoginPageContent() {
         password: signupPassword
       });
 
-      clearStoredToken();
-      clearStoredDriverToken();
-      clearStoredCustomerToken();
+      clearStoredWebSessions();
       setSignupVerificationSent(true);
       setSignupPreviewUrl(result.previewUrl ?? "");
       setSuccess(result.message);

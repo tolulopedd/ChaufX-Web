@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ChaufX Customer",
+    "name": "ChaufX",
     "slug": "chaufx-customer",
     "scheme": "ca.chaufx.customer",
     "version": "1.0.0",
@@ -21,7 +21,7 @@
         "NSLocationWhenInUseUsageDescription": "ChaufX uses your location to confirm your pickup point when you choose your current location."
       },
       "bundleIdentifier": "ca.chaufx.customer",
-      "buildNumber": "19"
+      "buildNumber": "23"
     },
     "android": {
       "adaptiveIcon": {

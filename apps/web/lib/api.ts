@@ -7,6 +7,25 @@ const TOKEN_KEY = "chaufx_admin_token";
 const WEB_ROLE_KEY = "chaufx_web_role";
 const DRIVER_TOKEN_KEY = "chaufx_driver_web_token";
 const CUSTOMER_TOKEN_KEY = "chaufx_customer_web_token";
+const ADMIN_REFRESH_TOKEN_KEY = "chaufx_admin_refresh_token";
+const DRIVER_REFRESH_TOKEN_KEY = "chaufx_driver_web_refresh_token";
+const CUSTOMER_REFRESH_TOKEN_KEY = "chaufx_customer_web_refresh_token";
+const SESSION_CHANGE_EVENT = "chaufx-session-change";
+
+type WebSessionScope = "admin" | "driver" | "customer";
+
+type AuthSession = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+const refreshPromises: Partial<Record<WebSessionScope, Promise<string>>> = {};
+
+function notifySessionChange() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
+  }
+}
 
 export function getStoredToken() {
   if (typeof window === "undefined") {
@@ -27,6 +46,87 @@ export function clearStoredToken() {
     window.localStorage.removeItem(TOKEN_KEY);
   }
 }
+
+function getRefreshTokenKey(scope: WebSessionScope) {
+  if (scope === "admin") {
+    return ADMIN_REFRESH_TOKEN_KEY;
+  }
+
+  return scope === "driver" ? DRIVER_REFRESH_TOKEN_KEY : CUSTOMER_REFRESH_TOKEN_KEY;
+}
+
+function getStoredRefreshToken(scope: WebSessionScope) {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem(getRefreshTokenKey(scope)) ?? "";
+}
+
+function setStoredRefreshToken(scope: WebSessionScope, token: string) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(getRefreshTokenKey(scope), token);
+  }
+}
+
+function clearStoredRefreshToken(scope: WebSessionScope) {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(getRefreshTokenKey(scope));
+  }
+}
+
+function storeWebSession(scope: WebSessionScope, session: AuthSession, notify = true) {
+  if (scope === "admin") {
+    setStoredToken(session.accessToken);
+  } else if (scope === "driver") {
+    setStoredDriverToken(session.accessToken);
+  } else {
+    setStoredCustomerToken(session.accessToken);
+  }
+
+  setStoredRefreshToken(scope, session.refreshToken);
+  if (notify) {
+    notifySessionChange();
+  }
+}
+
+function clearWebSession(scope: WebSessionScope) {
+  if (scope === "admin") {
+    clearStoredToken();
+  } else if (scope === "driver") {
+    clearStoredDriverToken();
+  } else {
+    clearStoredCustomerToken();
+  }
+
+  clearStoredRefreshToken(scope);
+  notifySessionChange();
+}
+
+export function setStoredAdminSession(session: AuthSession) {
+  storeWebSession("admin", session);
+}
+
+export function setStoredDriverSession(session: AuthSession) {
+  storeWebSession("driver", session);
+}
+
+export function setStoredCustomerSession(session: AuthSession) {
+  storeWebSession("customer", session);
+}
+
+export function clearStoredWebSessions() {
+  clearWebSession("admin");
+  clearWebSession("driver");
+  clearWebSession("customer");
+  clearStoredWebRole();
+}
+
+export function hasStoredWebSession() {
+  return Boolean(getStoredToken() || getStoredDriverToken() || getStoredCustomerToken());
+}
+
+export const webSessionChangeEvent = SESSION_CHANGE_EVENT;
 
 export function getStoredWebRole() {
   if (typeof window === "undefined") {
@@ -89,7 +189,7 @@ export function clearStoredCustomerToken() {
 }
 
 function handleAdminAuthFailure() {
-  clearStoredToken();
+  clearWebSession("admin");
   clearStoredWebRole();
 
   if (typeof window !== "undefined") {
@@ -98,11 +198,81 @@ function handleAdminAuthFailure() {
 }
 
 function handleCustomerAuthFailure() {
-  clearStoredCustomerToken();
+  clearWebSession("customer");
 
   if (typeof window !== "undefined") {
     window.location.href = "/login";
   }
+}
+
+function getStoredAccessToken(scope: WebSessionScope) {
+  if (scope === "admin") {
+    return getStoredToken();
+  }
+
+  return scope === "driver" ? getStoredDriverToken() : getStoredCustomerToken();
+}
+
+async function refreshWebSession(scope: WebSessionScope) {
+  const existingRefresh = refreshPromises[scope];
+  if (existingRefresh) {
+    return existingRefresh;
+  }
+
+  const refreshPromise = (async () => {
+  const refreshToken = getStoredRefreshToken(scope);
+  if (!refreshToken) {
+    throw new Error("Refresh session is unavailable");
+  }
+
+  const response = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ refreshToken })
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload?.accessToken || !payload?.refreshToken) {
+    throw new Error(payload?.error?.message ?? "Unable to refresh session");
+  }
+
+  storeWebSession(scope, payload as AuthSession, false);
+  return payload.accessToken as string;
+  })();
+
+  refreshPromises[scope] = refreshPromise;
+
+  try {
+    return await refreshPromise;
+  } finally {
+    delete refreshPromises[scope];
+  }
+}
+
+async function authenticatedWebFetch(scope: WebSessionScope, path: string, options?: RequestInit) {
+  const send = (token: string) =>
+    fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+        ...(options?.headers ?? {})
+      }
+    });
+
+  let response = await send(getStoredAccessToken(scope));
+  if (response.status === 401) {
+    try {
+      response = await send(await refreshWebSession(scope));
+    } catch {
+      clearWebSession(scope);
+      throw new Error("Session expired. Redirecting to login...");
+    }
+  }
+
+  return response;
 }
 
 export async function adminLogin(email: string, password: string) {
@@ -120,7 +290,7 @@ export async function adminLogin(email: string, password: string) {
     throw new Error(payload.error?.message ?? "Login failed");
   }
 
-  setStoredToken(payload.accessToken);
+  storeWebSession("admin", payload);
   if (payload.user?.role === "admin" || payload.user?.role === "marketing") {
     setStoredWebRole(payload.user.role);
   }
@@ -390,11 +560,8 @@ export async function driverLogin(email: string, password: string) {
   return data;
 }
 
-export async function fetchDriverProfile(token: string) {
-  const response = await fetch(`${API_BASE}/drivers/me`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
+export async function fetchDriverProfile(_token: string) {
+  const response = await authenticatedWebFetch("driver", "/drivers/me", {
     cache: "no-store"
   });
 
@@ -408,15 +575,7 @@ export async function fetchDriverProfile(token: string) {
 }
 
 export async function customerFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getStoredCustomerToken();
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token ? `Bearer ${token}` : "",
-      ...(options?.headers ?? {})
-    }
-  });
+  const response = await authenticatedWebFetch("customer", path, options);
 
   const payload = await response.json().catch(() => null);
 
@@ -461,15 +620,9 @@ export async function submitContactMessage(payload: {
 }
 
 export async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getStoredToken();
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await authenticatedWebFetch("admin", path, {
     cache: "no-store",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token ? `Bearer ${token}` : "",
-      ...(options?.headers ?? {})
-    }
+    ...options
   });
 
   const payload = await response.json().catch(() => null);
@@ -576,12 +729,7 @@ export async function resetAdminManagedUserPassword(userId: string, newPassword:
 }
 
 export async function fetchAdminDocumentLink(documentId: string) {
-  const token = getStoredToken();
-  const response = await fetch(`${API_BASE}/admin/documents/${documentId}/link`, {
-    headers: {
-      Authorization: token ? `Bearer ${token}` : ""
-    }
-  });
+  const response = await authenticatedWebFetch("admin", `/admin/documents/${documentId}/link`);
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
