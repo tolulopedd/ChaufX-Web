@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { PublicPageShell } from "../components/public-page-shell";
 import { SoroBlogPreview } from "../components/soro-blog-preview";
@@ -449,6 +450,91 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="download-apps" className="bg-white">
+        <div className="mx-auto max-w-7xl px-5 py-7 md:px-8 md:py-9">
+          <div className="overflow-hidden rounded-[34px] border border-[#DEE5F1] bg-[#F7F9FD] shadow-[0_28px_80px_-52px_rgba(15,23,42,0.34)]">
+            <div className="grid items-center gap-2 lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="px-6 py-7 md:px-10 md:py-8">
+                <h2 className="max-w-xl text-3xl font-semibold tracking-[-0.06em] text-[#0F172A] md:text-4xl">
+                  Download ChaufX App.
+                </h2>
+                <p className="mt-4 max-w-xl text-base leading-7 text-slate-600 md:text-lg">
+                  Your next trip is just a tap away - download ChaufX today.
+                </p>
+
+                <div className="mt-6 grid max-w-2xl gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-[#DCE4F0] bg-white p-3.5">
+                    <div>
+                      <div className="text-base font-semibold text-[#0F172A]">ChaufX</div>
+                      <div className="mt-1 text-sm text-slate-600">Book and manage your personal trips.</div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <a
+                        href="https://apps.apple.com/ca/app/chaufx/id6782390628"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Download ChaufX Customer on the App Store"
+                        className="flex h-11 w-full items-center justify-center overflow-hidden rounded-lg bg-black transition hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2"
+                      >
+                        <Image src="/store-badges/app-store.svg" alt="Download on the App Store" width={120} height={40} className="h-8 w-auto" />
+                      </a>
+                      <a
+                        href="https://play.google.com/store/apps/details?id=ca.chaufx.customer&pcampaignid=web_share"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Get ChaufX Customer on Google Play"
+                        className="flex h-11 w-full items-center justify-center overflow-hidden rounded-lg bg-black transition hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2"
+                      >
+                        <Image src="/store-badges/google-play.png" alt="Get it on Google Play" width={155} height={60} className="h-[2.3rem] w-auto" />
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#DCE4F0] bg-white p-3.5">
+                    <div>
+                      <div className="text-base font-semibold text-[#0F172A]">ChaufX Driver</div>
+                      <div className="mt-1 text-sm text-slate-600">Accept trips, navigate, and track your earnings.</div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <a
+                        href="https://apps.apple.com/ca/app/chaufx-driver/id6782411963"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Download ChaufX Driver on the App Store"
+                        className="flex h-11 w-full items-center justify-center overflow-hidden rounded-lg bg-black transition hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2"
+                      >
+                        <Image src="/store-badges/app-store.svg" alt="Download on the App Store" width={120} height={40} className="h-8 w-auto" />
+                      </a>
+                      <a
+                        href="https://play.google.com/store/apps/details?id=ca.chaufx.driver&pcampaignid=web_share"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Get ChaufX Driver on Google Play"
+                        className="flex h-11 w-full items-center justify-center overflow-hidden rounded-lg bg-black transition hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2"
+                      >
+                        <Image src="/store-badges/google-play.png" alt="Get it on Google Play" width={155} height={60} className="h-[2.3rem] w-auto" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative flex min-h-[17rem] items-center justify-center bg-[#EAF1FF] p-4 md:min-h-[23rem] lg:min-h-0">
+                <div className="absolute inset-x-[12%] bottom-[-22%] h-[62%] rounded-full bg-[#2563EB]/16 blur-3xl" />
+                <Image
+                  src="/mockups/chaufx-customer-driver-apps.png"
+                  alt="ChaufX Customer and Driver mobile apps"
+                  width={1080}
+                  height={1080}
+                  priority={false}
+                  className="relative h-auto w-full max-w-[25rem] object-contain drop-shadow-[0_22px_28px_rgba(15,23,42,0.24)]"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
