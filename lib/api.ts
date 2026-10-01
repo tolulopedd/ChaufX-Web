@@ -189,19 +189,22 @@ export function clearStoredCustomerToken() {
 }
 
 function handleAdminAuthFailure() {
-  clearWebSession("admin");
-  clearStoredWebRole();
-
-  if (typeof window !== "undefined") {
-    window.location.href = "/login";
-  }
+  expireWebSession("admin");
 }
 
 function handleCustomerAuthFailure() {
-  clearWebSession("customer");
+  expireWebSession("customer");
+}
+
+function expireWebSession(scope: WebSessionScope) {
+  clearWebSession(scope);
+  if (scope === "admin") {
+    clearStoredWebRole();
+  }
 
   if (typeof window !== "undefined") {
-    window.location.href = "/login";
+    // A full replacement prevents the expired page from remaining in history.
+    window.location.replace("/login");
   }
 }
 
@@ -267,8 +270,8 @@ async function authenticatedWebFetch(scope: WebSessionScope, path: string, optio
     try {
       response = await send(await refreshWebSession(scope));
     } catch {
-      clearWebSession(scope);
-      throw new Error("Session expired. Redirecting to login...");
+      expireWebSession(scope);
+      throw new Error("Session expired. Please sign in again.");
     }
   }
 
