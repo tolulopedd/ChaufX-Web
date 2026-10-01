@@ -611,6 +611,12 @@ function DriverApplicationFormPageContent() {
               ) : null}
             </div>
 
+            {applicationUpdateToken && !updateLoading && !applicationUpdateReady ? (
+              <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-slate-950">
+                <p>{error || "This application update link is no longer active."}</p>
+                <p className="mt-2">Please contact the ChaufX Team for a new link.</p>
+              </div>
+            ) : (
             <form className="mt-8 space-y-8" onSubmit={onSubmit}>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block">
@@ -1234,6 +1240,7 @@ function DriverApplicationFormPageContent() {
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       </section>

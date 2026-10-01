@@ -372,9 +372,9 @@ export const policyDocuments: PolicyDocument[] = [
       {
         title: "3. Eligibility and Qualifications",
         bullets: [
-          "Drivers must hold a valid full-privilege provincial licence in good standing.",
+          "Drivers must be minimum of twenty-two (22) years old with a valid provincial licence in good standing.",
           "Drivers must be at least twenty-three years old under ChaufX underwriting criteria.",
-          "Drivers must have at least three years of driving experience in Canada or an equivalent jurisdiction.",
+          "Drivers must have minimum of Two(2) years of driving experience in Canada or an equivalent jurisdiction.",
           "Drivers must maintain a clean driving abstract within platform policy thresholds.",
           "Drivers must be legally authorized to work in Canada and comply with applicable laws.",
           "Drivers must immediately notify ChaufX of licence suspensions, criminal charges, insurance lapses, or other changes affecting eligibility."
