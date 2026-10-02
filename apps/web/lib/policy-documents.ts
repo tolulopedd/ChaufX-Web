@@ -447,7 +447,7 @@ export const policyDocuments: PolicyDocument[] = [
         title: "Schedule A. Services, Fees, and Compensation",
         bullets: [
           "Services may include personal driving, event driving, designated driver services, senior assistance driving, wait-and-return driving, airport transfers, and other services introduced on the platform.",
-          "Placeholder onboarding rates include personal driving at $29 per hour with a two-hour minimum, senior assistance driving at $39 per hour with a two-hour minimum, airport transfers at $29 within the defined service area, and specified overnight or late-night pricing.",
+          "ChaufX uses a flat rate of $35 CAD per hour. The minimum booking is two (2) hours, pricing is billed in Canadian dollars with no hidden fees, and confirmed bookings are not subject to surge repricing.",
           "ChaufX retains a 30% platform commission on the gross booking fee, excluding taxes, gratuities, and pass-through expenses.",
           "Driver payouts are calculated weekly and generally paid within three business days after the end of each payout period.",
           "Fee disputes must be raised within ninety days of the applicable statement unless fraud or manifest error applies."
