@@ -15,6 +15,7 @@ import {
 import {
   createAdminUser,
   deleteAdminUser,
+  resendDriverPasswordLink,
   resetAdminManagedUserPassword,
   updateAdminUser,
   useAdminResource
@@ -145,14 +146,17 @@ function UsersPageContent() {
   const { data, error, loading, reload } = useAdminResource<AdminUserRecord[]>("/admin/users", []);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"ALL" | "CUSTOMER" | "DRIVER" | "ADMIN" | "MARKETING">("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | AdminUserRecord["status"]>("ALL");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [form, setForm] = useState<EditableForm>(emptyForm);
   const [createForm, setCreateForm] = useState<CreateUserForm>(emptyCreateUserForm);
+  const [createFormOpen, setCreateFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [passwordDraft, setPasswordDraft] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [resendingDriverPasswordLink, setResendingDriverPasswordLink] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
 
   const filteredUsers = useMemo(() => {
@@ -160,6 +164,10 @@ function UsersPageContent() {
 
     return data.filter((user) => {
       if (roleFilter !== "ALL" && user.role !== roleFilter) {
+        return false;
+      }
+
+      if (statusFilter !== "ALL" && user.status !== statusFilter) {
         return false;
       }
 
@@ -172,11 +180,11 @@ function UsersPageContent() {
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [data, query, roleFilter]);
+  }, [data, query, roleFilter, statusFilter]);
 
   const selectedUser = useMemo(
-    () => filteredUsers.find((user) => user.id === selectedUserId) ?? data.find((user) => user.id === selectedUserId) ?? filteredUsers[0] ?? null,
-    [data, filteredUsers, selectedUserId]
+    () => data.find((user) => user.id === selectedUserId) ?? null,
+    [data, selectedUserId]
   );
 
   useEffect(() => {
@@ -188,18 +196,14 @@ function UsersPageContent() {
     if (requestedUser) {
       setSelectedUserId(requestedUser.id);
       setRoleFilter("ALL");
+      setStatusFilter("ALL");
       setQuery("");
     }
   }, [data, requestedUserId]);
 
   useEffect(() => {
-    if (!selectedUserId && filteredUsers[0]?.id) {
-      setSelectedUserId(filteredUsers[0].id);
-      return;
-    }
-
-    if (selectedUserId && !filteredUsers.some((user) => user.id === selectedUserId) && filteredUsers[0]?.id) {
-      setSelectedUserId(filteredUsers[0].id);
+    if (selectedUserId && !filteredUsers.some((user) => user.id === selectedUserId)) {
+      setSelectedUserId("");
     }
   }, [filteredUsers, selectedUserId]);
 
@@ -284,6 +288,7 @@ function UsersPageContent() {
       await reload();
       setCreateForm(emptyCreateUserForm);
       setSelectedUserId(createdUser.id);
+      setCreateFormOpen(false);
       setStatusMessage("User created successfully.");
     } catch (createError) {
       setStatusMessage(createError instanceof Error ? createError.message : "Unable to create this user.");
@@ -336,6 +341,24 @@ function UsersPageContent() {
     }
   }
 
+  async function handleResendDriverPasswordLink() {
+    if (!selectedUser) {
+      return;
+    }
+
+    setResendingDriverPasswordLink(true);
+    setStatusMessage("");
+
+    try {
+      await resendDriverPasswordLink(selectedUser.id);
+      setStatusMessage("Set-password link sent to the driver.");
+    } catch (resendError) {
+      setStatusMessage(resendError instanceof Error ? resendError.message : "Unable to send the set-password link.");
+    } finally {
+      setResendingDriverPasswordLink(false);
+    }
+  }
+
   return (
     <AdminShell title="Users" description="Manage accounts.">
       <div className="grid gap-4 lg:grid-cols-4">
@@ -345,58 +368,75 @@ function UsersPageContent() {
         <StatCard title="Disabled" value={disabledCount} detail="Inactive accounts." />
       </div>
 
-      <Panel
-        title="Add user"
-        subtitle="Create a new account."
-        aside={
-          <button type="button" className={adminPrimaryButtonClass} onClick={handleCreateUser} disabled={creating}>
-            {creating ? "Creating..." : "Create user"}
-          </button>
-        }
-      >
-        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-          <label className="space-y-1.5 xl:col-span-2">
-            <span className="text-sm font-medium text-slate-700">Full name</span>
-            <input className={adminInputClass} value={createForm.fullName} onChange={(event) => setCreateForm((current) => ({ ...current, fullName: event.target.value }))} />
-          </label>
-          <label className="space-y-1.5 xl:col-span-2">
-            <span className="text-sm font-medium text-slate-700">Email</span>
-            <input className={adminInputClass} value={createForm.email} onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-sm font-medium text-slate-700">Phone</span>
-            <input className={adminInputClass} value={createForm.phone} onChange={(event) => setCreateForm((current) => ({ ...current, phone: event.target.value }))} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-sm font-medium text-slate-700">Temporary password</span>
-            <input type="password" className={adminInputClass} value={createForm.password} onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-sm font-medium text-slate-700">Role</span>
-            <select className={adminInputClass} value={createForm.role} onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value as CreateUserForm["role"] }))}>
-              <option value="CUSTOMER">Customer</option>
-              <option value="DRIVER">Driver</option>
-              <option value="ADMIN">Admin</option>
-              <option value="MARKETING">Marketing</option>
-            </select>
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-sm font-medium text-slate-700">Status</span>
-            <select className={adminInputClass} value={createForm.status} onChange={(event) => setCreateForm((current) => ({ ...current, status: event.target.value as CreateUserForm["status"] }))}>
-              <option value="ACTIVE">Active</option>
-              <option value="PENDING_APPROVAL">Pending approval</option>
-              <option value="DISABLED">Disabled</option>
-            </select>
-          </label>
-        </div>
-      </Panel>
-
-      <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
+      {createFormOpen ? (
         <Panel
-          title="User directory"
-          subtitle="Search users."
+          title="Create user"
           aside={
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <button type="button" className={adminGhostButtonClass} onClick={() => setCreateFormOpen(false)} disabled={creating}>
+                Cancel
+              </button>
+              <button type="button" className={adminPrimaryButtonClass} onClick={handleCreateUser} disabled={creating}>
+                {creating ? "Creating..." : "Create user"}
+              </button>
+            </div>
+          }
+        >
+          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <label className="space-y-1.5 xl:col-span-2">
+              <span className="text-sm font-medium text-slate-700">Full name</span>
+              <input className={adminInputClass} value={createForm.fullName} onChange={(event) => setCreateForm((current) => ({ ...current, fullName: event.target.value }))} />
+            </label>
+            <label className="space-y-1.5 xl:col-span-2">
+              <span className="text-sm font-medium text-slate-700">Email</span>
+              <input className={adminInputClass} value={createForm.email} onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700">Phone</span>
+              <input className={adminInputClass} value={createForm.phone} onChange={(event) => setCreateForm((current) => ({ ...current, phone: event.target.value }))} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700">Temporary password</span>
+              <input type="password" className={adminInputClass} value={createForm.password} onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700">Role</span>
+              <select className={adminInputClass} value={createForm.role} onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value as CreateUserForm["role"] }))}>
+                <option value="CUSTOMER">Customer</option>
+                <option value="DRIVER">Driver</option>
+                <option value="ADMIN">Admin</option>
+                <option value="MARKETING">Marketing</option>
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700">Status</span>
+              <select className={adminInputClass} value={createForm.status} onChange={(event) => setCreateForm((current) => ({ ...current, status: event.target.value as CreateUserForm["status"] }))}>
+                <option value="ACTIVE">Active</option>
+                <option value="PENDING_APPROVAL">Pending approval</option>
+                <option value="DISABLED">Disabled</option>
+              </select>
+            </label>
+          </div>
+        </Panel>
+      ) : null}
+
+      <div className={`grid gap-4 ${selectedUser ? "xl:grid-cols-[460px_1fr]" : "grid-cols-1"}`}>
+        <Panel
+          title={`User directory (${filteredUsers.length})`}
+          aside={
+            <button type="button" className={adminPrimaryButtonClass} onClick={() => setCreateFormOpen(true)}>
+              Create user
+            </button>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_220px]">
+              <input
+                className={adminInputClass}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by name, email, phone, or service area"
+              />
               <select className={adminInputClass} value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
                 <option value="ALL">All roles</option>
                 <option value="CUSTOMER">Customers</option>
@@ -404,16 +444,13 @@ function UsersPageContent() {
                 <option value="ADMIN">Admins</option>
                 <option value="MARKETING">Marketing</option>
               </select>
+              <select className={adminInputClass} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+                <option value="ALL">All statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="PENDING_APPROVAL">Pending approval</option>
+                <option value="DISABLED">Disabled</option>
+              </select>
             </div>
-          }
-        >
-          <div className="space-y-3">
-            <input
-              className={adminInputClass}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search users"
-            />
             {loading ? <p className="text-sm text-slate-500">Loading users...</p> : null}
             {error ? <p className="text-sm text-amber-600">{error}</p> : null}
             {filteredUsers.length ? (
@@ -457,6 +494,7 @@ function UsersPageContent() {
           </div>
         </Panel>
 
+        {selectedUser ? (
         <Panel
           title={selectedUser ? `${selectedUser.fullName}` : "User details"}
           subtitle={selectedUser ? "Update account details and profile-specific settings." : "Select a user to manage their account."}
@@ -473,9 +511,6 @@ function UsersPageContent() {
             ) : null
           }
         >
-          {!selectedUser ? (
-            <EmptyState title="No user selected" description="Pick an account from the directory to review and edit it." />
-          ) : (
             <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusPill label={selectedUser.role} tone="violet" />
@@ -673,6 +708,22 @@ function UsersPageContent() {
                 </div>
               ) : null}
 
+              {selectedUser.role === "DRIVER" && selectedUser.driver?.approvedAt ? (
+                <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <StatusPill label="Approved driver" tone="emerald" />
+                    <button
+                      type="button"
+                      className={adminPrimaryButtonClass}
+                      onClick={handleResendDriverPasswordLink}
+                      disabled={resendingDriverPasswordLink}
+                    >
+                      {resendingDriverPasswordLink ? "Sending..." : "Resend set-password link"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               {statusMessage ? <p className="text-sm text-[#4338CA]">{statusMessage}</p> : null}
 
               <div className="flex flex-wrap items-center gap-3 border-t border-[#E5E7EB] pt-4">
@@ -694,8 +745,8 @@ function UsersPageContent() {
                 </button>
               </div>
             </div>
-          )}
         </Panel>
+        ) : null}
       </div>
     </AdminShell>
   );

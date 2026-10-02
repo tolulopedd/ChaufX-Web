@@ -731,6 +731,12 @@ export async function resetAdminManagedUserPassword(userId: string, newPassword:
   });
 }
 
+export async function resendDriverPasswordLink(userId: string) {
+  return adminFetch<{ success: true }>(`/admin/users/${userId}/resend-driver-password-link`, {
+    method: "POST"
+  });
+}
+
 export async function fetchAdminDocumentLink(documentId: string) {
   const response = await authenticatedWebFetch("admin", `/admin/documents/${documentId}/link`);
 
