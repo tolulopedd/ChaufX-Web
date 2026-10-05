@@ -372,7 +372,7 @@ export default function DriverLoginPage() {
 
           {activeSection === "current-rides" ? <DriverSection
             id="current-rides"
-            eyebrow="Upcoming trips"
+            eyebrow="Schedule"
             title="Upcoming trips"
             aside={
               <button
@@ -535,8 +535,8 @@ export default function DriverLoginPage() {
 
           {activeSection === "history" ? <DriverSection
             id="history"
-            eyebrow="Ride history"
-            title="Ride history"
+            eyebrow="History"
+            title="Completed trips"
           >
             {completedRides.length ? (
               <div className="overflow-hidden rounded-[24px] border border-[#E5E7EB] bg-white">

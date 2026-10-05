@@ -199,8 +199,8 @@ export function ChaufxBlogGrid() {
           Travel Tips, Stories & Updates
         </h1>
         <p className="mt-5 max-w-4xl text-lg leading-8 text-slate-600">
-          Explore the latest from ChaufX through our articles, travel tips, driver and customer stories, company updates, news, and practical guides designed to help you get the most out of the ChaufX platform and make every journey{" "}
-          <strong className="font-semibold text-slate-700">smoother, safer, and more enjoyable</strong> on our platform.
+          Explore travel tips, community stories, company news, and practical guides for a{" "}
+          <strong className="font-semibold text-slate-700">smoother, safer journey</strong>.
         </p>
       </div>
 

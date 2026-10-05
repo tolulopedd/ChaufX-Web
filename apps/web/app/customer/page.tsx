@@ -2128,6 +2128,11 @@ export default function CustomerPortalPage() {
                           : `${statusLabel(estimate.pricingMembershipTier)} member rate: ${toCurrency(Number(estimate.flatFee), estimate.currency ?? "CAD")}/hour`}
                       </div>
                     ) : null}
+                    {Number(estimate.carriedOverageAmount ?? 0) > 0 ? (
+                      <div className="mt-2 text-sm font-medium text-amber-700">
+                        Includes {toCurrency(Number(estimate.carriedOverageAmount), estimate.currency ?? "CAD")} for {Number(estimate.carriedOverageHours)} extra hour{Number(estimate.carriedOverageHours) === 1 ? "" : "s"} from your previous trip.
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -2155,7 +2160,7 @@ export default function CustomerPortalPage() {
 
           {activeSection === "awaiting-payment" ? <SectionPanel
             id="awaiting-payment"
-            eyebrow="Awaiting payment"
+            eyebrow="Payments"
             title="Awaiting payment"
           >
             <div className="mb-5 inline-flex rounded-2xl border border-[#DCE4F4] bg-white p-1">

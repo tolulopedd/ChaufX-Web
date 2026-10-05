@@ -9,6 +9,9 @@ type SettlementTrip = {
   bookingId: string;
   completedAt: string | null;
   amount: number;
+  baseAmount: number;
+  extensionAmount: number;
+  extensionCount: number;
   customerName: string;
   pickupLocation: string;
   destinationLocation: string;
@@ -471,7 +474,9 @@ export default function SettlementsPage() {
                         <th className="px-3 py-2">Completed trip</th>
                         <th className="px-3 py-2">Customer</th>
                         <th className="px-3 py-2">Completed</th>
-                        <th className="px-3 py-2 text-right">Amount</th>
+                        <th className="px-3 py-2 text-right">Fare</th>
+                        <th className="px-3 py-2 text-right">Extensions</th>
+                        <th className="px-3 py-2 text-right">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -485,6 +490,14 @@ export default function SettlementsPage() {
                           <td className={adminTableCellClass}>{trip.customerName}</td>
                           <td className={`${adminTableCellClass} text-slate-500`}>
                             {trip.completedAt ? new Date(trip.completedAt).toLocaleString() : "Not recorded"}
+                          </td>
+                          <td className={`${adminTableCellClass} text-right text-slate-600`}>
+                            {formatCurrency(trip.baseAmount)}
+                          </td>
+                          <td className={`${adminTableCellClass} text-right text-slate-600`}>
+                            {trip.extensionCount > 0
+                              ? `${formatCurrency(trip.extensionAmount)} (${trip.extensionCount})`
+                              : "—"}
                           </td>
                           <td className={`rounded-r-2xl ${adminTableCellClass} text-right font-semibold text-slate-950`}>
                             {formatCurrency(trip.amount)}
