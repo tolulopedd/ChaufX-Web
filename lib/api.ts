@@ -44,6 +44,7 @@ export function setStoredToken(token: string) {
 export function clearStoredToken() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(ADMIN_REFRESH_TOKEN_KEY);
   }
 }
 
@@ -165,6 +166,7 @@ export function setStoredDriverToken(token: string) {
 export function clearStoredDriverToken() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(DRIVER_TOKEN_KEY);
+    window.localStorage.removeItem(DRIVER_REFRESH_TOKEN_KEY);
   }
 }
 
@@ -185,6 +187,7 @@ export function setStoredCustomerToken(token: string) {
 export function clearStoredCustomerToken() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(CUSTOMER_TOKEN_KEY);
+    window.localStorage.removeItem(CUSTOMER_REFRESH_TOKEN_KEY);
   }
 }
 
