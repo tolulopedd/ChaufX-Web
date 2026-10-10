@@ -18,19 +18,7 @@ const quickLinks = [
 
 export function PublicSiteFooter() {
   return (
-    <>
-      <section className="px-5 py-6 md:px-8 md:py-8">
-        <div className="mx-auto max-w-5xl">
-          <iframe
-            title="ChaufX Early Access"
-            src="https://early-access-chaufx.systeme.io/public/440237334fbe5ed82c307a5fdecbbc5b21e272fd/show"
-            className="block h-[520px] w-full border-0 md:h-[300px]"
-            loading="lazy"
-          />
-        </div>
-      </section>
-
-      <footer className="bg-white">
+    <footer className="bg-white">
         <div className="mx-auto max-w-7xl px-5 py-8 md:px-8">
           <div className="mb-6">
             <p className="text-lg font-semibold leading-7 tracking-[-0.04em] text-[#0F172A] md:text-xl md:leading-8 xl:whitespace-nowrap">
@@ -80,7 +68,6 @@ export function PublicSiteFooter() {
             </div>
           </div>
         </div>
-      </footer>
-    </>
+    </footer>
   );
 }
