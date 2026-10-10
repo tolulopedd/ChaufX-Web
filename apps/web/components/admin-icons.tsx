@@ -54,6 +54,16 @@ export function UsersIcon({ className }: IconProps) {
   );
 }
 
+export function ReferralsIcon({ className }: IconProps) {
+  return (
+    <IconBase className={className}>
+      <path d="M9 15 15 9" />
+      <path d="m7.5 12.5-2 2a3.5 3.5 0 1 0 5 5l2-2" />
+      <path d="m16.5 11.5 2-2a3.5 3.5 0 1 0-5-5l-2 2" />
+    </IconBase>
+  );
+}
+
 export function ApplicationsIcon({ className }: IconProps) {
   return (
     <IconBase className={className}>

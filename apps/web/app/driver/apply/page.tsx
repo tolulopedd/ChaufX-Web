@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { PublicPageShell } from "../../../components/public-page-shell";
 import { requestDriverOnboardingVerificationEmail } from "../../../lib/api";
 
@@ -11,11 +11,22 @@ export default function DriverApplyIntroPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [lead, setLead] = useState({
     firstName: "",
     lastName: "",
     email: ""
   });
+
+  useEffect(() => {
+    const incoming = new URLSearchParams(window.location.search).get("ref")?.trim().toUpperCase() ?? "";
+    if (/^CHX-[A-Z0-9]{3,12}$/.test(incoming)) {
+      setReferralCode(incoming);
+      window.localStorage.setItem("chaufx_driver_referral_code", incoming);
+    } else {
+      setReferralCode(window.localStorage.getItem("chaufx_driver_referral_code") ?? "");
+    }
+  }, []);
 
   async function sendVerification(event: FormEvent) {
     event.preventDefault();
@@ -23,10 +34,11 @@ export default function DriverApplyIntroPage() {
     setError("");
 
     try {
-      const response = await requestDriverOnboardingVerificationEmail(lead);
+      const response = await requestDriverOnboardingVerificationEmail({ ...lead, referralCode: referralCode || undefined });
       setMessage(response.message);
       setPreviewUrl(response.previewUrl ?? "");
       setSubmitted(true);
+      window.localStorage.removeItem("chaufx_driver_referral_code");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to send verification email");
     } finally {
@@ -161,7 +173,7 @@ export default function DriverApplyIntroPage() {
                         setError("");
 
                         try {
-                          const response = await requestDriverOnboardingVerificationEmail(lead);
+                          const response = await requestDriverOnboardingVerificationEmail({ ...lead, referralCode: referralCode || undefined });
                           setMessage(response.message);
                           setPreviewUrl(response.previewUrl ?? "");
                         } catch (reason) {

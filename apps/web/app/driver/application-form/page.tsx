@@ -116,7 +116,7 @@ const documentUploadFields: Array<{
 }> = [
   { label: "* Valid Driver’s License (Front page)", key: "driverLicenseFront", required: true },
   { label: "* Valid Driver’s License (Back page)", key: "driverLicenseBack", required: true },
-  { label: "* Insurance Certificate", key: "proofOfInsurance", required: true },
+  { label: "* CERTIFICATE OF AUTOMOBILE INSURANCE (Not Pink Card)", key: "proofOfInsurance", required: true },
   { label: "Proof of Work Authorization (For Canadian temporary residents)", key: "workAuthorization", required: false },
   { label: "First Aid / CPR / PSW / Health or emergency training certificate", key: "healthTrainingCertificate", required: false }
 ];

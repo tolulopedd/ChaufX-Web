@@ -52,6 +52,7 @@ function LoginPageContent() {
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [signupVerificationSent, setSignupVerificationSent] = useState(false);
   const [signupPreviewUrl, setSignupPreviewUrl] = useState("");
+  const [referralCode, setReferralCode] = useState("");
 
   const [resetEmail, setResetEmail] = useState("");
   const [resetPreviewUrl, setResetPreviewUrl] = useState("");
@@ -59,6 +60,18 @@ function LoginPageContent() {
   useEffect(() => {
     const verified = searchParams.get("verified");
     const verifiedEmail = searchParams.get("email");
+    const requestedMode = searchParams.get("mode");
+    const requestedRole = searchParams.get("role");
+    const incomingReferral = searchParams.get("ref")?.trim().toUpperCase() ?? "";
+
+    if (requestedMode === "signup") setMode("signup");
+    if (requestedRole === "customer" || requestedRole === "driver") setSignupRole(requestedRole);
+    if (/^CHX-[A-Z0-9]{3,12}$/.test(incomingReferral)) {
+      setReferralCode(incomingReferral);
+      window.localStorage.setItem("chaufx_customer_referral_code", incomingReferral);
+    } else {
+      setReferralCode(window.localStorage.getItem("chaufx_customer_referral_code") ?? "");
+    }
 
     if (verified === "1") {
       setMode("login");
@@ -149,13 +162,15 @@ function LoginPageContent() {
         fullName: signupFullName,
         email: signupEmail,
         phone: signupPhone || undefined,
-        password: signupPassword
+        password: signupPassword,
+        referralCode: referralCode || undefined
       });
 
       clearStoredWebSessions();
       setSignupVerificationSent(true);
       setSignupPreviewUrl(result.previewUrl ?? "");
       setSuccess(result.message);
+      window.localStorage.removeItem("chaufx_customer_referral_code");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to create account");
     } finally {

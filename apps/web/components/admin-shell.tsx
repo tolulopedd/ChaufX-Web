@@ -13,6 +13,7 @@ import {
   MessagesIcon,
   MembershipIcon,
   ReportsIcon,
+  ReferralsIcon,
   SettlementsIcon,
   SettingsIcon,
   SignOutIcon,
@@ -52,13 +53,15 @@ const navSections: NavSection[] = [
     items: [
       { href: "/applications", label: "Applications", icon: ApplicationsIcon, roles: ["admin"] },
       { href: "/drivers", label: "Drivers", icon: DriversIcon, roles: ["admin"] },
-      { href: "/users", label: "Users", icon: UsersIcon, roles: ["admin"] }
+      { href: "/users", label: "Users", icon: UsersIcon, roles: ["admin"] },
+      { href: "/referral-partners", label: "Referral Partners", icon: ReferralsIcon, roles: ["admin"] }
     ]
   },
   {
     title: "Finance",
     items: [
       { href: "/memberships", label: "Memberships", icon: MembershipIcon, roles: ["admin"] },
+      { href: "/first-ride-promotion", label: "First Ride Promotion", icon: MembershipIcon, roles: ["admin"] },
       { href: "/settlements", label: "Settlements", icon: SettlementsIcon, roles: ["admin"] },
       { href: "/reports", label: "Reports", icon: ReportsIcon, roles: ["admin"] }
     ]
