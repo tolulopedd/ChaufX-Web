@@ -54,6 +54,11 @@ type AdminUserRecord = {
     bookings: Array<{ id: string }>;
   } | null;
   updatedAt?: string;
+  referralAttribution?: {
+    registeredAt: string;
+    referralCode: string;
+    partner: { id: string; name: string; code: string; status: "ACTIVE" | "INACTIVE" };
+  } | null;
 };
 
 type EditableForm = {
@@ -424,7 +429,13 @@ function UsersPageContent() {
         <Panel
           title={`User directory (${filteredUsers.length})`}
           aside={
-            <button type="button" className={adminPrimaryButtonClass} onClick={() => setCreateFormOpen(true)}>
+            <button
+              type="button"
+              className={adminPrimaryButtonClass}
+              disabled={createFormOpen}
+              onClick={() => setCreateFormOpen(true)}
+              title={createFormOpen ? "Finish or cancel the open form first" : undefined}
+            >
               Create user
             </button>
           }
@@ -521,7 +532,18 @@ function UsersPageContent() {
                 {selectedUser.driver?.application?.status ? (
                   <StatusPill label={selectedUser.driver.application.status} tone="neutral" />
                 ) : null}
+                {selectedUser.referralAttribution ? (
+                  <StatusPill label={`Referred · ${selectedUser.referralAttribution.partner.name}`} tone="violet" />
+                ) : null}
               </div>
+
+              {selectedUser.referralAttribution ? (
+                <div className="rounded-[16px] border border-[#DCDDFF] bg-[#F8F9FF] px-4 py-3 text-sm text-slate-700">
+                  <span className="font-semibold text-slate-950">Referral partner:</span>{" "}
+                  {selectedUser.referralAttribution.partner.name} · {selectedUser.referralAttribution.referralCode} · registered{" "}
+                  {new Date(selectedUser.referralAttribution.registeredAt).toLocaleDateString()}
+                </div>
+              ) : null}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1.5">

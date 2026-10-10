@@ -6,10 +6,10 @@ export const adminInputClass =
   "w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[#4F46E5] focus:ring-2 focus:ring-[#EEF0FF]";
 
 export const adminPrimaryButtonClass =
-  "rounded-xl bg-[#2563EB] px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60";
+  "rounded-xl bg-[#2563EB] px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:hover:bg-slate-200";
 
 export const adminSecondaryButtonClass =
-  "rounded-xl border border-[#DCDDFF] bg-[#EEF0FF] px-3.5 py-2 text-sm font-semibold text-[#4338CA] transition hover:bg-[#E4E7FF] disabled:cursor-not-allowed disabled:opacity-60";
+  "rounded-xl border border-[#DCDDFF] bg-[#EEF0FF] px-3.5 py-2 text-sm font-semibold text-[#4338CA] transition hover:bg-[#E4E7FF] disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100";
 
 export const adminGhostButtonClass =
   "rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60";

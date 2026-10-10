@@ -35,6 +35,9 @@ export default function DriversPage() {
                       label={driver.availabilityStatus ? "Available" : "Offline"}
                       tone={driver.availabilityStatus ? "emerald" : "neutral"}
                     />
+                    {driver.user.referralAttribution ? (
+                      <StatusPill label={`Referred · ${driver.user.referralAttribution.partner.name}`} tone="violet" />
+                    ) : null}
                     <Link
                       href={`/users?userId=${encodeURIComponent(driver.userId)}`}
                       className={adminSecondaryButtonClass}

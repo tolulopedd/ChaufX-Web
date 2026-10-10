@@ -349,6 +349,7 @@ export async function requestCustomerVerificationEmail(payload: {
   email: string;
   phone?: string;
   password: string;
+  referralCode?: string;
 }) {
   const response = await fetch(`${API_BASE}/auth/verify-email/request/customer`, {
     method: "POST",
@@ -371,6 +372,7 @@ export async function requestDriverOnboardingVerificationEmail(payload: {
   firstName: string;
   lastName: string;
   email: string;
+  referralCode?: string;
 }) {
   const response = await fetch(`${API_BASE}/auth/verify-email/request/driver-onboarding`, {
     method: "POST",
@@ -643,6 +645,31 @@ export async function adminFetch<T>(path: string, options?: RequestInit): Promis
   }
 
   return payload as T;
+}
+
+export async function createReferralPartner(payload: {
+  name: string;
+  contactName: string;
+  email: string;
+  phone?: string;
+  code?: string;
+  status?: "ACTIVE" | "INACTIVE";
+}) {
+  return adminFetch("/admin/referral-partners", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateReferralPartner(
+  partnerId: string,
+  payload: Partial<{
+    name: string;
+    contactName: string;
+    email: string;
+    phone: string | null;
+    code: string;
+    status: "ACTIVE" | "INACTIVE";
+  }>
+) {
+  return adminFetch(`/admin/referral-partners/${partnerId}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export async function updateSettlementStatus(

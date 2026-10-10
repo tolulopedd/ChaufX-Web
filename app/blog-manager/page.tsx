@@ -295,6 +295,7 @@ export default function BlogManagerPage() {
         <button
           type="button"
           className={adminSecondaryButtonClass}
+          disabled={Boolean(selectedPost || isCreating)}
           onClick={() => {
             setSelectedId("");
             setIsCreating(true);

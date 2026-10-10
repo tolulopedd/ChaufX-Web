@@ -354,6 +354,9 @@ export default function ApplicationsPage() {
                     label={formatApplicationStatus(selectedApplication.status)}
                     tone={selectedApplication.status === "APPROVED" ? "emerald" : selectedApplication.status === "REJECTED" ? "rose" : "amber"}
                   />
+                  {selectedApplication.user?.referralAttribution ? (
+                    <StatusPill label={`Referred · ${selectedApplication.user.referralAttribution.partner.name}`} tone="violet" />
+                  ) : null}
                 </div>
                 <p className="mt-2 text-sm text-slate-500">
                   {selectedApplication.email} · {selectedApplication.phone}
