@@ -54,7 +54,7 @@ const navSections: NavSection[] = [
       { href: "/applications", label: "Applications", icon: ApplicationsIcon, roles: ["admin"] },
       { href: "/drivers", label: "Drivers", icon: DriversIcon, roles: ["admin"] },
       { href: "/users", label: "Users", icon: UsersIcon, roles: ["admin"] },
-      { href: "/referral-partners", label: "Referral Partners", icon: ReferralsIcon, roles: ["admin"] }
+      { href: "/referral-partners", label: "Referral Partners", icon: ReferralsIcon, roles: ["admin", "marketing"] }
     ]
   },
   {
