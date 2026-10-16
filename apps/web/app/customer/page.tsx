@@ -42,11 +42,30 @@ function formatDateTimeLocal(value: Date) {
   )}`;
 }
 
+const monthShortNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatTripDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day || !monthShortNames[month - 1]) return "";
+  return `${String(day).padStart(2, "0")}-${monthShortNames[month - 1]}-${year}`;
+}
+
+function parseTripDate(value: string) {
+  const match = value.trim().match(/^(\d{1,2})-([a-z]{3})-(\d{4})$/i);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = monthShortNames.findIndex((name) => name.toLowerCase() === match[2].toLowerCase()) + 1;
+  const year = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (!month || date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function getMinimumScheduledStartAt() {
-  const minimum = new Date(Date.now() + 60 * 60 * 1000);
-  minimum.setSeconds(0, 0);
-  minimum.setMinutes(minimum.getMinutes() + 1);
-  return formatDateTimeLocal(minimum);
+  // Schedule at least one hour ahead. Round up only to the next selectable
+  // minute, so 7:30 can be booked from 8:30 onward.
+  const minimumTimestamp = Math.ceil((Date.now() + 60 * 60 * 1000) / 60_000) * 60_000;
+  return formatDateTimeLocal(new Date(minimumTimestamp));
 }
 
 function formatScheduledTripSummary(value: string, hours: number) {
@@ -80,6 +99,10 @@ function statusLabel(value?: string) {
 }
 
 function buildVehicleLabel(vehicle: any) {
+  if (!vehicle) {
+    return "";
+  }
+
   return [vehicle.make, vehicle.model, vehicle.plateNumber].filter(Boolean).join(" · ");
 }
 
@@ -169,6 +192,10 @@ type BookingPaymentChoice = {
   bookingId: string;
   amount: number;
   currency: string;
+  route?: string;
+  scheduledStartAt?: string;
+  vehicleDetails?: string;
+  durationHours?: number;
   interacInstructions?: {
     recipientEmail: string;
     reference: string;
@@ -564,6 +591,37 @@ function TripEmptyCard({
   );
 }
 
+function DriverMatchingCard({ bookings }: { bookings: any[] }) {
+  if (!bookings.length) return null;
+
+  const booking = bookings[0];
+  const additionalBookings = bookings.length - 1;
+
+  return (
+    <section className="mb-5 overflow-hidden rounded-[24px] border border-[#BFDBFE] bg-[linear-gradient(135deg,#EFF6FF_0%,#EEF2FF_54%,#FFFFFF_100%)] p-5 shadow-[0_16px_38px_-30px_rgba(37,99,235,0.65)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative flex h-14 w-14 shrink-0 items-center justify-center" aria-hidden="true">
+          <span className="absolute h-14 w-14 animate-ping rounded-full bg-[#60A5FA]/35" />
+          <span className="absolute h-10 w-10 animate-pulse rounded-full border-2 border-[#2563EB]/45" />
+          <span className="relative h-4 w-4 rounded-full bg-[#2563EB] shadow-[0_0_0_7px_rgba(37,99,235,0.14)]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#2563EB]">Live matching</div>
+          <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-slate-950">Looking for your driver</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            We’re notifying eligible drivers for {compactRouteLabel(booking)}. We’ll notify you as soon as a driver accepts.
+            {additionalBookings > 0 ? ` We’re also matching ${additionalBookings} other pending ${additionalBookings === 1 ? "trip" : "trips"}.` : ""}
+          </p>
+        </div>
+        <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-[#1D4ED8] ring-1 ring-inset ring-[#BFDBFE]">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-[#2563EB]" />
+          Searching
+        </span>
+      </div>
+    </section>
+  );
+}
+
 function TripStack({
   rows,
   onCancel,
@@ -843,6 +901,7 @@ export default function CustomerPortalPage() {
       specialNotes: ""
     };
   });
+  const [scheduledDateDraft, setScheduledDateDraft] = useState(() => formatTripDate(getMinimumScheduledStartAt().slice(0, 10)));
 
   const bookingInteracSecondsRemaining = bookingPaymentChoice?.interacInstructions
     ? Math.max(0, Math.ceil((new Date(bookingPaymentChoice.interacInstructions.expiresAt).getTime() - bookingInteracCurrentTime) / 1000))
@@ -889,6 +948,22 @@ export default function CustomerPortalPage() {
   }, []);
 
   useEffect(() => {
+    const returnParams = new URLSearchParams(window.location.search);
+    if (!returnParams.get("bookingId") || !returnParams.get("session_id")) {
+      return;
+    }
+
+    setStatus("Card authorized — finding your driver.");
+    window.location.hash = "upcoming";
+    void reloadBookings();
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("bookingId");
+    url.searchParams.delete("session_id");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [reloadBookings]);
+
+  useEffect(() => {
     if (profile?.customerProfile?.vehicles?.length && !form.vehicleId) {
       setForm((current) => ({
         ...current,
@@ -896,6 +971,10 @@ export default function CustomerPortalPage() {
       }));
     }
   }, [form.vehicleId, profile]);
+
+  useEffect(() => {
+    setScheduledDateDraft(formatTripDate(form.scheduledStartAt.slice(0, 10)));
+  }, [form.scheduledStartAt]);
 
   useEffect(() => {
     if (profile?.email && !interacEmail) {
@@ -986,6 +1065,46 @@ export default function CustomerPortalPage() {
     () => profile?.customerProfile?.vehicles?.find((vehicle: any) => vehicle.id === form.vehicleId) ?? null,
     [form.vehicleId, profile]
   );
+  const hasSavedVehicle = (profile?.customerProfile?.vehicles?.length ?? 0) > 0;
+  const hasHomeAddress = Boolean(profile?.customerProfile?.primaryAddress?.trim());
+  const hasGovernmentPhotoId = Boolean(governmentPhotoId || profile?.customerProfile?.identityDocument);
+  const isCustomerAccountDraftComplete = Boolean(
+    customerAccountDraft.fullName.trim() &&
+      customerAccountDraft.phone.trim() &&
+      customerAccountDraft.dateOfBirth &&
+      customerAccountDraft.primaryAddress.trim() &&
+      customerAccountDraft.emergencyContactName.trim() &&
+      customerAccountDraft.emergencyContactPhone.trim() &&
+      customerAccountDraft.emergencyContactEmail.trim() &&
+      hasGovernmentPhotoId
+  );
+  const isVehicleDraftComplete = Boolean(
+    vehicleDraft.make.trim() &&
+      vehicleDraft.model.trim() &&
+      vehicleDraft.plateNumber.trim() &&
+      vehicleDraft.registrationProvince.trim()
+  );
+  const isScheduledStartAtEligible = (() => {
+    const selectedStartAt = new Date(form.scheduledStartAt);
+    return !Number.isNaN(selectedStartAt.getTime()) && selectedStartAt >= new Date(getMinimumScheduledStartAt());
+  })();
+  const bookingRequirements = useMemo(() => {
+    const missing: string[] = [];
+
+    if (!hasHomeAddress) missing.push("Add your home address in Account.");
+    if (!hasSavedVehicle) missing.push("Add a vehicle in Account.");
+    else if (!selectedVehicle) missing.push("Select Saved Vehicle.");
+    if (!form.pickupLat || !form.pickupLng) missing.push("Select a pickup address.");
+    if (!form.destinationLat || !form.destinationLng) missing.push("Select a destination address.");
+    if (!form.scheduledStartAt) missing.push("Choose a date and time.");
+    else if (!isScheduledStartAtEligible) missing.push("Future trips cannot be booked less than one hour ahead.");
+    if (!estimateBusy && !estimate && form.pickupLat && form.pickupLng && form.destinationLat && form.destinationLng) {
+      missing.push("Wait for a valid fare estimate.");
+    }
+
+    return missing;
+  }, [estimate, estimateBusy, form.destinationLat, form.destinationLng, form.pickupLat, form.pickupLng, form.scheduledStartAt, hasHomeAddress, hasSavedVehicle, isScheduledStartAtEligible, selectedVehicle]);
+  const canCreateScheduledTrip = bookingRequirements.length === 0 && !bookingCreating && !estimateBusy && Boolean(estimate);
 
   const awaitingPaymentBookings = useMemo(
     () => bookings.filter((booking) => booking.status === "AWAITING_PAYMENT"),
@@ -999,7 +1118,21 @@ export default function CustomerPortalPage() {
     () => bookings.filter((booking) => ["PENDING", "ACCEPTED", "ENROUTE", "ACTIVE"].includes(String(booking.status))),
     [bookings]
   );
+  const matchingBookings = useMemo(
+    () => bookings.filter((booking) => booking.status === "PENDING" && !booking.assignedDriver),
+    [bookings]
+  );
+  useEffect(() => {
+    if (activeSection !== "upcoming" || matchingBookings.length === 0) return;
+
+    const interval = window.setInterval(() => {
+      void reloadBookings();
+    }, 10_000);
+
+    return () => window.clearInterval(interval);
+  }, [activeSection, matchingBookings.length, reloadBookings]);
   const completedBookings = useMemo(() => bookings.filter((booking) => booking.status === "COMPLETED"), [bookings]);
+  const cancelledBookings = useMemo(() => bookings.filter((booking) => booking.status === "CANCELLED"), [bookings]);
   const totalPaid = useMemo(
     () =>
       bookings.reduce(
@@ -1044,6 +1177,20 @@ export default function CustomerPortalPage() {
     setStatus("");
 
     try {
+      if (!hasHomeAddress) {
+        window.location.hash = "account";
+        throw new Error("Add your home address in Account before booking.");
+      }
+
+      if (!selectedVehicle) {
+        window.location.hash = "account";
+        throw new Error(
+          hasSavedVehicle
+            ? "Select your saved vehicle before booking."
+            : "Add your vehicle details in Account before booking."
+        );
+      }
+
       const pickupLat = Number(form.pickupLat);
       const pickupLng = Number(form.pickupLng);
       const destinationLat = Number(form.destinationLat);
@@ -1055,14 +1202,10 @@ export default function CustomerPortalPage() {
 
       const minimumScheduledStartAt = getMinimumScheduledStartAt();
       const selectedStartAt = new Date(form.scheduledStartAt);
-      const scheduledStartAt =
-        Number.isNaN(selectedStartAt.getTime()) || selectedStartAt < new Date(minimumScheduledStartAt)
-          ? new Date(minimumScheduledStartAt)
-          : selectedStartAt;
-
-      if (scheduledStartAt.getTime() !== selectedStartAt.getTime()) {
-        setForm((current) => ({ ...current, scheduledStartAt: minimumScheduledStartAt }));
+      if (Number.isNaN(selectedStartAt.getTime()) || selectedStartAt < new Date(minimumScheduledStartAt)) {
+        throw new Error("Future trips cannot be booked less than one hour ahead.");
       }
+      const scheduledStartAt = selectedStartAt;
 
       const result = await customerFetch<{
         booking?: { id?: string; fareEstimate?: number; currency?: string };
@@ -1080,8 +1223,8 @@ export default function CustomerPortalPage() {
           scheduledStartAt: scheduledStartAt.toISOString(),
           expectedDurationMinutes: form.hours * 60,
           specialNotes: form.specialNotes || undefined,
-          vehicleId: form.vehicleId || undefined,
-          vehicleDetails: buildVehicleLabel(selectedVehicle) || undefined,
+          vehicleId: selectedVehicle.id,
+          vehicleDetails: buildVehicleLabel(selectedVehicle),
           zoneCode: form.zoneCode
         })
       });
@@ -1103,7 +1246,15 @@ export default function CustomerPortalPage() {
       const amount = Number(result.booking?.fareEstimate ?? estimate?.fareEstimate ?? 0);
       setEstimate(null);
       setBookingInteracConfirmed(false);
-      setBookingPaymentChoice({ bookingId, amount, currency: result.booking?.currency ?? "CAD" });
+      setBookingPaymentChoice({
+        bookingId,
+        amount,
+        currency: result.booking?.currency ?? "CAD",
+        route: `${form.pickupLocation} to ${form.destinationLocation}`,
+        scheduledStartAt: scheduledStartAt.toISOString(),
+        vehicleDetails: buildVehicleLabel(selectedVehicle),
+        durationHours: form.hours
+      });
       await Promise.all([reloadBookings(), reloadProfile()]);
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Unable to create the scheduled trip right now.";
@@ -1143,6 +1294,7 @@ export default function CustomerPortalPage() {
       const origin = window.location.origin;
       const result = await customerFetch<{
         alreadyPaid?: boolean;
+        alreadyAuthorized?: boolean;
         checkoutUrl?: string | null;
       }>(`/payments/${bookingId}/checkout-session`, {
         method: "POST",
@@ -1158,6 +1310,14 @@ export default function CustomerPortalPage() {
         return;
       }
 
+      if (result.alreadyAuthorized) {
+        setBookingPaymentChoice(null);
+        setStatus("Card authorized — finding your driver.");
+        await reloadBookings();
+        window.location.hash = "upcoming";
+        return;
+      }
+
       if (result.checkoutUrl) {
         window.location.href = result.checkoutUrl;
         return;
@@ -1169,6 +1329,25 @@ export default function CustomerPortalPage() {
     } finally {
       setPayingBookingId("");
     }
+  }
+
+  async function openBookingPaymentChoice(bookingId: string) {
+    const booking = bookings.find((item) => item.id === bookingId);
+    if (!booking) {
+      setStatus("Booking details are still loading. Please try again.");
+      return;
+    }
+
+    setBookingInteracConfirmed(false);
+    setBookingPaymentChoice({
+      bookingId: booking.id,
+      amount: Number(booking.fareEstimate ?? booking.payment?.amount ?? 0),
+      currency: booking.currency ?? booking.payment?.currency ?? "CAD",
+      route: routeLabel(booking),
+      scheduledStartAt: booking.scheduledStartAt,
+      vehicleDetails: booking.vehicleDetails,
+      durationHours: Math.ceil(Number(booking.expectedDurationMinutes ?? 0) / 60)
+    });
   }
 
   async function requestBookingInterac() {
@@ -1422,6 +1601,11 @@ export default function CustomerPortalPage() {
   }
 
   async function saveCustomerAccount() {
+    if (!isCustomerAccountDraftComplete) {
+      setStatus("Complete all profile details, including your home address and government photo ID, before saving.");
+      return;
+    }
+
     setCustomerAccountSaving(true);
     setStatus("");
     try {
@@ -1473,6 +1657,23 @@ export default function CustomerPortalPage() {
     }
   }
 
+  function updateScheduledStart(date: string, time: string) {
+    const minimumScheduledStartAt = getMinimumScheduledStartAt();
+    const nextValue = `${date}T${time || "00:00"}`;
+    const selectedStartAt = new Date(nextValue);
+
+    setForm((current) => ({ ...current, scheduledStartAt: nextValue }));
+    if (Number.isNaN(selectedStartAt.getTime()) || selectedStartAt < new Date(minimumScheduledStartAt)) {
+      setStatus("Future trips cannot be booked less than one hour ahead.");
+    }
+  }
+
+  const minimumScheduledStartAt = getMinimumScheduledStartAt();
+  const scheduledTripDate = form.scheduledStartAt.slice(0, 10);
+  const scheduledTripTime = form.scheduledStartAt.slice(11, 16);
+  const minimumTripDate = minimumScheduledStartAt.slice(0, 10);
+  const minimumTripTime = minimumScheduledStartAt.slice(11, 16);
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f7f7fb_0%,#ffffff_42%,#f3f4f6_100%)] text-[#0F172A]">
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:items-start lg:grid-cols-[240px_1fr]">
@@ -1491,6 +1692,7 @@ export default function CustomerPortalPage() {
               { href: "#awaiting-payment", label: "Awaiting payment", icon: SettlementsIcon },
               { href: "#upcoming", label: "Upcoming trips", icon: TripsIcon },
               { href: "#completed", label: "Completed trips", icon: ReportsIcon },
+              { href: "#cancelled", label: "Cancelled trips", icon: BookingsIcon },
               { href: "#account", label: "Account", icon: UsersIcon }
             ].map((item) => (
               <a
@@ -1560,10 +1762,20 @@ export default function CustomerPortalPage() {
             <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-5">
               <section className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-label="Choose payment method">
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Payment</div>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-slate-950">Complete payment</h2>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-slate-950">Authorize your card</h2>
                 <div className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-slate-950">
                   {toCurrency(bookingPaymentChoice.amount, bookingPaymentChoice.currency)}
                 </div>
+                <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 text-sm text-slate-700">
+                  <div className="font-semibold text-slate-950">Trip summary</div>
+                  {bookingPaymentChoice.route ? <div className="mt-2 leading-6"><span className="font-medium text-slate-500">Route:</span> {bookingPaymentChoice.route}</div> : null}
+                  {bookingPaymentChoice.scheduledStartAt ? <div className="mt-1 leading-6"><span className="font-medium text-slate-500">Starts:</span> {formatDate(bookingPaymentChoice.scheduledStartAt)}</div> : null}
+                  {bookingPaymentChoice.vehicleDetails ? <div className="mt-1 leading-6"><span className="font-medium text-slate-500">Vehicle:</span> {bookingPaymentChoice.vehicleDetails}</div> : null}
+                  {bookingPaymentChoice.durationHours ? <div className="mt-1 leading-6"><span className="font-medium text-slate-500">Duration:</span> {bookingPaymentChoice.durationHours} {bookingPaymentChoice.durationHours === 1 ? "hour" : "hours"}</div> : null}
+                </div>
+                <p className="mt-4 rounded-2xl bg-[#EEF6FF] px-4 py-3 text-sm font-medium leading-6 text-[#1D4ED8]">
+                  Your card will be authorized now, but you will only be charged after a driver accepts.
+                </p>
 
                 {bookingPaymentChoice.interacInstructions ? (
                   <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-slate-700">
@@ -1622,7 +1834,7 @@ export default function CustomerPortalPage() {
                       disabled={Boolean(bookingPaymentAction)}
                       className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      {bookingPaymentAction === "stripe" ? <><LoadingSpinner /> Opening Stripe...</> : "Pay with Stripe"}
+                      {bookingPaymentAction === "stripe" ? <><LoadingSpinner /> Opening secure payment...</> : "Continue to secure payment"}
                     </button>
                   </div>
                 )}
@@ -1772,11 +1984,16 @@ export default function CustomerPortalPage() {
                 <button
                   type="button"
                   onClick={saveCustomerAccount}
-                  disabled={customerAccountSaving}
+                  disabled={customerAccountSaving || !isCustomerAccountDraftComplete}
                   className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
                     {customerAccountSaving ? <><LoadingSpinner /> Saving...</> : "Save"}
                 </button>
+                {!isCustomerAccountDraftComplete ? (
+                  <p className="mt-2 text-sm font-medium text-amber-700">
+                    Complete all profile details, including your home address and government photo ID, to save your account.
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-6 flex items-center justify-between gap-3">
@@ -1860,7 +2077,7 @@ export default function CustomerPortalPage() {
                   <button
                     type="button"
                     onClick={saveVehicle}
-                    disabled={vehicleSaving}
+                    disabled={vehicleSaving || !isVehicleDraftComplete}
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {vehicleSaving ? <><LoadingSpinner /> Saving...</> : "Save"}
@@ -1876,6 +2093,7 @@ export default function CustomerPortalPage() {
                     Cancel
                   </button>
                 </div>
+                {!isVehicleDraftComplete ? <p className="mt-2 text-sm font-medium text-amber-700">Complete all vehicle details to save.</p> : null}
               </div> : null}
             </SectionPanel>
           ) : null}
@@ -1964,7 +2182,7 @@ export default function CustomerPortalPage() {
             title="Book a future trip"
           >
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <label className="block">
+              <label className="block xl:col-span-2">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Pickup address</span>
                 <div className="relative">
                   <input
@@ -2000,7 +2218,7 @@ export default function CustomerPortalPage() {
                 </div>
               </label>
 
-              <label className="block">
+              <label className="block xl:col-span-2">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Destination address</span>
                 <div className="relative">
                   <input
@@ -2041,45 +2259,72 @@ export default function CustomerPortalPage() {
                 </div>
               </label>
 
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">Date and time</span>
-                <input
-                  type="datetime-local"
-                  value={form.scheduledStartAt}
-                  min={getMinimumScheduledStartAt()}
-                  onFocus={() => {
-                    const minimumScheduledStartAt = getMinimumScheduledStartAt();
-                    if (new Date(form.scheduledStartAt) < new Date(minimumScheduledStartAt)) {
-                      setForm((current) => ({ ...current, scheduledStartAt: minimumScheduledStartAt }));
-                    }
-                  }}
-                  onChange={(event) => {
-                    const minimumScheduledStartAt = getMinimumScheduledStartAt();
-                    const selectedStartAt = new Date(event.target.value);
-                    setForm((current) => ({
-                      ...current,
-                      scheduledStartAt:
-                        Number.isNaN(selectedStartAt.getTime()) || selectedStartAt < new Date(minimumScheduledStartAt)
-                          ? minimumScheduledStartAt
-                          : event.target.value
-                    }));
-                  }}
-                  className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-2.5 outline-none transition focus:border-[#2563EB]"
-                />
-              </label>
+              <div className="grid gap-3 sm:grid-cols-2 md:col-span-2 xl:col-span-4 xl:grid-cols-[12rem_12rem_13rem]">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Trip date</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={scheduledDateDraft}
+                    placeholder="DD-Mon-YYYY"
+                    onChange={(event) => setScheduledDateDraft(event.target.value)}
+                    onBlur={() => {
+                      const date = parseTripDate(scheduledDateDraft);
+                      if (!date) {
+                        setScheduledDateDraft(formatTripDate(scheduledTripDate));
+                        setStatus("Use DD-Mon-YYYY for the trip date.");
+                        return;
+                      }
+                      updateScheduledStart(date, scheduledTripTime);
+                    }}
+                    className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-2.5 outline-none transition focus:border-[#2563EB]"
+                  />
+                </label>
 
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">Hours</span>
-                <input
-                  type="number"
-                  min={2}
-                  value={form.hours}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, hours: Math.max(2, Number(event.target.value) || 2) }))
-                  }
-                  className="w-full rounded-2xl border border-[#E5E7EB] px-4 py-2.5 outline-none transition focus:border-[#2563EB]"
-                />
-              </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Start time</span>
+                  <input
+                    type="time"
+                    value={scheduledTripTime}
+                    min={scheduledTripDate === minimumTripDate ? minimumTripTime : undefined}
+                    onChange={(event) => updateScheduledStart(scheduledTripDate, event.target.value)}
+                    className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-2.5 outline-none transition focus:border-[#2563EB]"
+                  />
+                </label>
+
+                <div className="min-w-[13rem]">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Duration</span>
+                  <div className="flex items-center justify-between rounded-2xl border border-[#E5E7EB] bg-white p-1">
+                    <button
+                      type="button"
+                      aria-label="Reduce trip duration"
+                      disabled={form.hours <= 2}
+                      onClick={() => setForm((current) => ({ ...current, hours: Math.max(2, current.hours - 1) }))}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xl font-semibold text-[#4338CA] transition hover:bg-[#EEF0FF] disabled:cursor-not-allowed disabled:text-slate-300"
+                    >
+                      −
+                    </button>
+                    <div className="text-center leading-tight">
+                      <div className="text-base font-semibold text-slate-950">{form.hours} {form.hours === 1 ? "hour" : "hours"}</div>
+                      <div className="text-[0.68rem] font-medium text-slate-500">Paid time</div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Increase trip duration"
+                      disabled={form.hours >= 12}
+                      onClick={() => setForm((current) => ({ ...current, hours: Math.min(12, current.hours + 1) }))}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#EEF0FF] text-xl font-semibold text-[#4338CA] transition hover:bg-[#DCE4FF] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                {!isScheduledStartAtEligible ? (
+                  <p className="text-sm font-medium text-rose-700 sm:col-span-2 xl:col-span-3">
+                    Future trips cannot be booked less than one hour ahead.
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-3 max-w-xl">
@@ -2098,6 +2343,16 @@ export default function CustomerPortalPage() {
                   ))}
                 </select>
               </label>
+              {!selectedVehicle ? (
+                <p className="mt-2 text-sm font-medium text-amber-700">
+                  {hasSavedVehicle ? "Select a saved vehicle before booking." : "Vehicle details are required before booking. "}
+                  {!hasSavedVehicle ? (
+                    <a href="#account" className="font-semibold text-[#2563EB] underline underline-offset-2">
+                      Add your vehicle in Account
+                    </a>
+                  ) : null}
+                </p>
+              ) : null}
             </div>
 
             <label className="mt-3 block">
@@ -2137,20 +2392,19 @@ export default function CustomerPortalPage() {
                 ) : null}
               </div>
 
+              {bookingRequirements.length > 0 ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 lg:col-span-2">
+                  <div className="font-semibold">Complete required details before booking.</div>
+                  {!hasHomeAddress || !hasSavedVehicle ? (
+                    <a href="#account" className="mt-2 inline-block font-semibold text-[#2563EB] underline underline-offset-2">Go to Account</a>
+                  ) : null}
+                </div>
+              ) : null}
+
               <button
                 type="button"
                 onClick={createScheduledTrip}
-                disabled={
-                  estimateBusy ||
-                  bookingCreating ||
-                  !form.pickupLocation ||
-                  !form.destinationLocation ||
-                  !form.pickupLat ||
-                  !form.pickupLng ||
-                  !form.destinationLat ||
-                  !form.destinationLng ||
-                  !estimate
-                }
+                disabled={!canCreateScheduledTrip}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB] px-6 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {bookingCreating ? <><LoadingSpinner /> Creating booking...</> : "Book now"}
@@ -2186,7 +2440,7 @@ export default function CustomerPortalPage() {
                 rows={awaitingPaymentBookings}
                 emptyTitle="No trip payments awaiting payment"
                 onCancel={cancelBooking}
-                onPayNow={payNow}
+                onPayNow={openBookingPaymentChoice}
                 payingBookingId={payingBookingId}
                 busyBookingId={busyBookingId}
               />
@@ -2246,14 +2500,17 @@ export default function CustomerPortalPage() {
             {bookingsLoading ? (
               <p className="text-sm text-slate-500">Loading upcoming bookings...</p>
             ) : (
-              <TripTable
-                rows={upcomingBookings}
-                emptyTitle="No upcoming bookings"
-                onCancel={cancelBooking}
-                onPayNow={payNow}
-                payingBookingId={payingBookingId}
-                busyBookingId={busyBookingId}
-              />
+              <>
+                <DriverMatchingCard bookings={matchingBookings} />
+                <TripTable
+                  rows={upcomingBookings}
+                  emptyTitle="No upcoming bookings"
+                  onCancel={cancelBooking}
+                  onPayNow={openBookingPaymentChoice}
+                  payingBookingId={payingBookingId}
+                  busyBookingId={busyBookingId}
+                />
+              </>
             )}
           </SectionPanel> : null}
 
@@ -2269,7 +2526,26 @@ export default function CustomerPortalPage() {
                 rows={completedBookings}
                 emptyTitle="No completed bookings yet"
                 onCancel={cancelBooking}
-                onPayNow={payNow}
+                onPayNow={openBookingPaymentChoice}
+                payingBookingId={payingBookingId}
+                busyBookingId={busyBookingId}
+              />
+            )}
+          </SectionPanel> : null}
+
+          {activeSection === "cancelled" ? <SectionPanel
+            id="cancelled"
+            eyebrow="Cancelled"
+            title="Cancelled trips"
+          >
+            {bookingsLoading ? (
+              <p className="text-sm text-slate-500">Loading cancelled bookings...</p>
+            ) : (
+              <TripTable
+                rows={cancelledBookings}
+                emptyTitle="No cancelled trips"
+                onCancel={cancelBooking}
+                onPayNow={openBookingPaymentChoice}
                 payingBookingId={payingBookingId}
                 busyBookingId={busyBookingId}
               />

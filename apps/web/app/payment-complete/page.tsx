@@ -4,9 +4,9 @@ import { PublicPageShell } from "../../components/public-page-shell";
 export default function PaymentCompletePage() {
   return (
     <PublicPageShell
-      heroTitle="Payment received"
-      heroCopy="Your ChaufX trip payment has been recorded. You can return to the mobile app to review your trip and rate your driver."
-      heroTagline="Payment complete"
+      heroTitle="Card authorized"
+      heroCopy="We are finding an eligible driver for your ChaufX trip. Your card is charged only after a driver accepts."
+      heroTagline="Driver matching"
     >
       <section className="bg-white">
         <div className="mx-auto max-w-3xl px-5 py-10 md:px-8">
@@ -15,17 +15,17 @@ export default function PaymentCompletePage() {
               Stripe checkout
             </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#0F172A]">
-              Payment complete.
+              Card authorized — finding your driver.
             </h1>
             <p className="mt-4 text-base leading-7 text-slate-600">
-              Your receipt is available from your payment provider. You can head back to the ChaufX app now and refresh your trip details.
+              We will notify you as soon as a driver accepts your booking. If no driver accepts within the matching window, the authorization is released automatically.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/blog"
-                className="inline-flex rounded-full border border-[#D7DEEF] px-5 py-3 text-sm font-semibold text-[#2563EB] transition hover:border-[#2563EB]"
+                href="/customer#upcoming"
+                className="inline-flex rounded-full bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1D4ED8]"
               >
-                Continue browsing
+                View your trip
               </Link>
             </div>
           </div>
