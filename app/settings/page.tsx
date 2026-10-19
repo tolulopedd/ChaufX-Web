@@ -169,6 +169,7 @@ export default function SettingsPage() {
     [fallbackPricing, savedFallbackPricing]
   );
   const settlementPricingDirty = platformSharePercent !== savedPlatformSharePercent;
+  const settingsDirty = provincePricingDirty || cityPricingDirty || fallbackPricingDirty || settlementPricingDirty;
 
   function applySavedSettings(payload: Partial<typeof settingsFallback>) {
     if (payload.provincePricing) {
@@ -209,7 +210,11 @@ export default function SettingsPage() {
               }
             : {
                 provincePricing,
-                cityPricing: cityPricingPayload
+                cityPricing: cityPricingPayload,
+                fallbackPricing,
+                settlementConfig: {
+                  platformSharePercent
+                }
               };
 
       const savedSettings = await adminFetch<Partial<typeof settingsFallback>>("/admin/settings/pricing", {
@@ -218,7 +223,9 @@ export default function SettingsPage() {
       });
       applySavedSettings(savedSettings);
       setNotice(
-        scope === "fallback"
+        scope === "all"
+          ? "Settings saved."
+          : scope === "fallback"
           ? "Fallback pricing saved."
           : scope === "settlement"
             ? "Settlement split saved."
@@ -255,14 +262,26 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#E5E7EB] bg-white px-4 py-3">
+        <p className="text-sm text-slate-600">{settingsDirty ? "You have unsaved pricing changes." : "All pricing settings are saved."}</p>
+        <button
+          type="button"
+          onClick={() => savePricing("all")}
+          disabled={saving || !settingsDirty}
+          className={adminPrimaryButtonClass}
+        >
+          {saving ? "Saving..." : "Save changes"}
+        </button>
+      </div>
+
       <Panel
         title="Driver settlement formula"
         aside={
           <button
             type="button"
             onClick={() => savePricing("settlement")}
-            disabled={saving}
-            className={settlementPricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
+            disabled={saving || !settlementPricingDirty}
+            className={adminSecondaryButtonClass}
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -298,8 +317,8 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => savePricing("fallback")}
-            disabled={saving}
-            className={fallbackPricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
+            disabled={saving || !fallbackPricingDirty}
+            className={adminSecondaryButtonClass}
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -353,8 +372,8 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => savePricing("all")}
-            disabled={saving}
-            className={provincePricingDirty || cityPricingDirty ? adminPrimaryButtonClass : adminSecondaryButtonClass}
+            disabled={saving || (!provincePricingDirty && !cityPricingDirty)}
+            className={adminSecondaryButtonClass}
           >
             {saving ? "Saving..." : "Save"}
           </button>

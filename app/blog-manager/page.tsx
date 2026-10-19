@@ -9,6 +9,8 @@ import {
   StatCard,
   StatusPill,
   adminGhostButtonClass,
+  adminFilterButtonActiveClass,
+  adminFilterButtonClass,
   adminInputClass,
   adminPrimaryButtonClass,
   adminSecondaryButtonClass
@@ -366,14 +368,14 @@ export default function BlogManagerPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  className={editorMode === "write" ? adminPrimaryButtonClass : adminGhostButtonClass}
+                  className={editorMode === "write" ? adminFilterButtonActiveClass : adminFilterButtonClass}
                   onClick={() => setEditorMode("write")}
                 >
                   Write
                 </button>
                 <button
                   type="button"
-                  className={editorMode === "preview" ? adminPrimaryButtonClass : adminGhostButtonClass}
+                  className={editorMode === "preview" ? adminFilterButtonActiveClass : adminFilterButtonClass}
                   onClick={() => setEditorMode("preview")}
                 >
                   Preview

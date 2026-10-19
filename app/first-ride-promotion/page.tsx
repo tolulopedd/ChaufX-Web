@@ -27,7 +27,7 @@ export default function FirstRidePromotionPage() {
       setConfig(result.config); setNotice("First ride promotion saved.");
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Unable to save the promotion."); } finally { setSaving(false); }
   }
-  return <AdminShell title="First Ride Promotion" description="Applied after the customer’s membership rate and redeemed only when the trip is completed.">
+  return <AdminShell title="First Ride Promotion">
     <div className="grid gap-4 md:grid-cols-3"><StatCard title="Status" value={config.enabled ? "Active" : "Off"} detail="Backend-calculated" /><StatCard title="Reserved or redeemed" value={String(config.usageCount)} detail={config.usageLimit ? `Limit: ${config.usageLimit}` : "No usage limit"} /><StatCard title="Membership combination" value={config.combineWithMembershipRates ? "Allowed" : "Not allowed"} detail="Existing member rates stay unchanged" /></div>
     {(notice || error) ? <div className="rounded-[18px] border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">{notice || error}</div> : null}
     <Panel title="Promotion settings" aside={<button type="button" className={adminPrimaryButtonClass} disabled={saving || loading} onClick={save}>{saving ? "Saving..." : "Save"}</button>}>

@@ -5,6 +5,8 @@ import { AdminShell, Panel } from "../../components/admin-shell";
 import {
   EmptyState,
   StatusPill,
+  adminFilterButtonActiveClass,
+  adminFilterButtonClass,
   adminGhostButtonClass,
   adminInputClass,
   adminPrimaryButtonClass
@@ -67,14 +69,14 @@ export default function MessagesPage() {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className={filter === "all" ? adminPrimaryButtonClass : adminGhostButtonClass}
+            className={filter === "all" ? adminFilterButtonActiveClass : adminFilterButtonClass}
             onClick={() => setFilter("all")}
           >
             All messages
           </button>
           <button
             type="button"
-            className={filter === "account-deletion" ? adminPrimaryButtonClass : adminGhostButtonClass}
+            className={filter === "account-deletion" ? adminFilterButtonActiveClass : adminFilterButtonClass}
             onClick={() => setFilter("account-deletion")}
           >
             Account deletion
@@ -188,7 +190,7 @@ export default function MessagesPage() {
                   </div>
 
                   <div className="flex flex-col items-start gap-3 md:items-end">
-                    <StatusPill label={message.status === "NEW" ? "New" : "Resolved"} tone={message.status === "NEW" ? "violet" : "navy"} />
+                    <StatusPill label={message.status === "NEW" ? "New" : "Resolved"} tone={message.status === "NEW" ? "amber" : "emerald"} />
                     <button
                       type="button"
                       className={adminGhostButtonClass}

@@ -84,7 +84,7 @@ function formatScheduledTripSummary(value: string, hours: number) {
     month: "short"
   })}-${startsAt.getFullYear()}`;
 
-  return `You are about to schedule a ${hours}-hour trip with ChaufX Driver from ${time(startsAt)} to ${time(endsAt)} on ${date}.`;
+  return `${date} · ${time(startsAt)}–${time(endsAt)} · ${hours} ${hours === 1 ? "hour" : "hours"}`;
 }
 
 function requestTypeLabel(value?: string) {
@@ -425,21 +425,28 @@ function MembershipPurchaseFlow({
   currentBillingCycle,
   actionKey,
   onStripe,
+  onInterac,
+  onConfirmInterac,
   onDowngradeToBasic
 }: {
   currentTier: MembershipTier;
   currentBillingCycle: MembershipBillingCycle | null;
   actionKey: string;
   onStripe: (tier: "PLUS" | "CONCIERGE", billingCycle: MembershipBillingCycle) => Promise<void>;
+  onInterac: (tier: "PLUS" | "CONCIERGE", billingCycle: MembershipBillingCycle) => Promise<InteracInstructions>;
+  onConfirmInterac: (paymentId: string) => Promise<void>;
   onDowngradeToBasic: () => Promise<void>;
 }) {
   const [tier, setTier] = useState<Exclude<MembershipTier, "CORPORATE">>(currentTier === "PLUS" ? "CONCIERGE" : "PLUS");
   const [billingCycle, setBillingCycle] = useState<MembershipBillingCycle>("MONTHLY");
+  const [paymentMethod, setPaymentMethod] = useState<"STRIPE" | "INTERAC">("STRIPE");
+  const [interacInstructions, setInteracInstructions] = useState<InteracInstructions | null>(null);
+  const [interacSent, setInteracSent] = useState(false);
   const [changingBilling, setChangingBilling] = useState(false);
   const plan = customerMembershipPlans.find((item) => item.tier === tier) ?? customerMembershipPlans[1];
   const isBusy = actionKey.startsWith(tier);
   const selectedPrice = billingCycle === "MONTHLY" ? plan.monthlyFee : plan.annualFee;
-  const selectedActionKey = `${tier}:stripe:${billingCycle}`;
+  const selectedActionKey = `${tier}:${paymentMethod === "STRIPE" ? "stripe" : "interac"}:${billingCycle}`;
   const projectedMembershipExpiry = useMemo(() => calculateMembershipExpiry(new Date(), billingCycle), [billingCycle]);
 
   async function continueCheckout() {
@@ -449,6 +456,19 @@ function MembershipPurchaseFlow({
     }
 
     await onStripe(tier, billingCycle);
+  }
+
+  async function requestInterac() {
+    if (tier === "BASIC") return;
+    const instructions = await onInterac(tier, billingCycle);
+    setInteracInstructions(instructions);
+    setInteracSent(false);
+  }
+
+  async function confirmInterac() {
+    if (!interacInstructions) return;
+    await onConfirmInterac(interacInstructions.paymentId);
+    setInteracSent(true);
   }
 
   return (
@@ -482,6 +502,8 @@ function MembershipPurchaseFlow({
               onClick={() => {
                 setTier(option.tier);
                 setChangingBilling(false);
+                setInteracInstructions(null);
+                setInteracSent(false);
               }}
               className={`rounded-[22px] border p-5 text-left transition ${
                 current
@@ -541,9 +563,11 @@ function MembershipPurchaseFlow({
                   type="button"
                   onClick={() => {
                     setBillingCycle(cycle);
+                    setInteracInstructions(null);
+                    setInteracSent(false);
                   }}
                   className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                    billingCycle === cycle ? "bg-[#2563EB] text-white shadow-sm" : "text-slate-600 hover:bg-[#F1F5F9]"
+                    billingCycle === cycle ? "bg-[#EEF2FF] text-[#3730A3] shadow-sm" : "text-slate-600 hover:bg-[#F1F5F9]"
                   }`}
                 >
                   {label}
@@ -561,15 +585,21 @@ function MembershipPurchaseFlow({
           </div>
 
           <div className="flex flex-col justify-end">
-            <button
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Payment method</div>
+            <div className="mt-2 grid grid-cols-2 gap-1 rounded-2xl border border-[#DCE4F4] bg-white p-1">
+              <button type="button" onClick={() => { setPaymentMethod("STRIPE"); setInteracInstructions(null); setInteracSent(false); }} className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${paymentMethod === "STRIPE" ? "bg-[#EEF2FF] text-[#3730A3]" : "text-slate-600 hover:bg-[#F1F5F9]"}`}>Card</button>
+              <button type="button" onClick={() => { setPaymentMethod("INTERAC"); setInteracInstructions(null); setInteracSent(false); }} className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${paymentMethod === "INTERAC" ? "bg-[#EEF2FF] text-[#3730A3]" : "text-slate-600 hover:bg-[#F1F5F9]"}`}>E-transfer</button>
+            </div>
+            {paymentMethod === "STRIPE" ? <button
               type="button"
               onClick={continueCheckout}
               disabled={isBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {actionKey === selectedActionKey ? <><LoadingSpinner /> Opening Stripe...</> : "Continue with Stripe"}
-            </button>
+              {actionKey === selectedActionKey ? <><LoadingSpinner /> Opening secure payment...</> : "Continue to secure payment"}
+            </button> : !interacInstructions ? <button type="button" onClick={() => void requestInterac()} disabled={isBusy} className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50">{actionKey === selectedActionKey ? <><LoadingSpinner /> Preparing...</> : "Get e-transfer details"}</button> : null}
           </div>
+          {interacInstructions ? <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] p-4 md:col-span-3"><div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#1D4ED8]">E-transfer details</div><div className="mt-2 grid gap-2 text-sm text-slate-700 sm:grid-cols-3"><div><span className="block text-xs text-slate-500">Send to</span><span className="font-semibold text-slate-950">{interacInstructions.recipientEmail}</span></div><div><span className="block text-xs text-slate-500">Reference</span><span className="font-semibold text-slate-950">{interacInstructions.invoiceNumber}</span></div><div><span className="block text-xs text-slate-500">Amount</span><span className="font-semibold text-slate-950">{toCurrency(interacInstructions.amount, interacInstructions.currency)}</span></div></div><div className="mt-3 flex flex-wrap items-center gap-3">{interacSent ? <span className="rounded-full border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800">Awaiting payment confirmation</span> : <button type="button" disabled={actionKey === `confirm:${interacInstructions.paymentId}`} onClick={() => void confirmInterac()} className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:opacity-50">{actionKey === `confirm:${interacInstructions.paymentId}` ? <><LoadingSpinner /> Confirming...</> : "I’ve sent the e-transfer"}</button>}<span className="text-xs text-slate-600">Membership activates after ChaufX confirms payment.</span></div></div> : null}
         </div>}
       </div>
     </section>
@@ -861,6 +891,7 @@ export default function CustomerPortalPage() {
   const [busyBookingId, setBusyBookingId] = useState("");
   const [payingBookingId, setPayingBookingId] = useState("");
   const [bookingPaymentChoice, setBookingPaymentChoice] = useState<BookingPaymentChoice | null>(null);
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<"STRIPE" | "INTERAC">("STRIPE");
   const [bookingPaymentAction, setBookingPaymentAction] = useState("");
   const [bookingInteracConfirmed, setBookingInteracConfirmed] = useState(false);
   const [bookingInteracCurrentTime, setBookingInteracCurrentTime] = useState(() => Date.now());
@@ -1339,6 +1370,7 @@ export default function CustomerPortalPage() {
     }
 
     setBookingInteracConfirmed(false);
+    setBookingPaymentMethod("STRIPE");
     setBookingPaymentChoice({
       bookingId: booking.id,
       amount: Number(booking.fareEstimate ?? booking.payment?.amount ?? 0),
@@ -1506,6 +1538,7 @@ export default function CustomerPortalPage() {
   }
 
   async function confirmMembershipInterac(paymentId: string) {
+    setMembershipAction(`confirm:${paymentId}`);
     setStatus("");
 
     try {
@@ -1518,6 +1551,8 @@ export default function CustomerPortalPage() {
       const message = reason instanceof Error ? reason.message : "Unable to confirm the e-transfer.";
       setStatus(message);
       throw reason;
+    } finally {
+      setMembershipAction("");
     }
   }
 
@@ -1676,29 +1711,28 @@ export default function CustomerPortalPage() {
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f7f7fb_0%,#ffffff_42%,#f3f4f6_100%)] text-[#0F172A]">
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:items-start lg:grid-cols-[240px_1fr]">
-        <aside className="h-fit rounded-[30px] border border-[#E5E7EB] bg-white/95 p-4 shadow-[0_24px_52px_-36px_rgba(15,23,42,0.3)] backdrop-blur lg:sticky lg:top-5 lg:self-start">
+      <div className="mx-auto grid max-w-7xl gap-5 px-3 py-3 sm:px-5 sm:py-6 lg:items-start lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="h-fit rounded-[24px] border border-[#E5E7EB] bg-white/95 p-4 shadow-[0_24px_52px_-36px_rgba(15,23,42,0.3)] backdrop-blur lg:sticky lg:top-5 lg:self-start lg:rounded-[30px]">
           <div className="rounded-[24px] bg-[linear-gradient(145deg,#0F172A,#1f2555_48%,#4338CA_100%)] p-5 text-white">
-            <div className="max-w-[15rem] rounded-full border border-white/12 bg-white/8 px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/70">
-              ChaufX Customer Web Platform
-            </div>
+            <div className="text-lg font-semibold tracking-[-0.04em]">ChaufX</div>
+            <div className="mt-1 text-sm text-white/70">Customer portal</div>
           </div>
 
-          <nav className="mt-5 space-y-1.5">
+          <nav className="mt-4 flex gap-1.5 overflow-x-auto pb-1 lg:block lg:space-y-1.5 lg:overflow-visible lg:pb-0">
             {[
               { href: "#dashboard", label: "Dashboard", icon: DashboardIcon },
               { href: "#membership", label: "Membership", icon: SettlementsIcon },
-              { href: "#schedule", label: "Schedule trip", icon: BookingsIcon },
-              { href: "#awaiting-payment", label: "Awaiting payment", icon: SettlementsIcon },
+              { href: "#schedule", label: "Book trip", icon: BookingsIcon },
+              { href: "#awaiting-payment", label: "Payments", icon: SettlementsIcon },
               { href: "#upcoming", label: "Upcoming trips", icon: TripsIcon },
-              { href: "#completed", label: "Completed trips", icon: ReportsIcon },
+              { href: "#completed", label: "Trip history", icon: ReportsIcon },
               { href: "#cancelled", label: "Cancelled trips", icon: BookingsIcon },
               { href: "#account", label: "Account", icon: UsersIcon }
             ].map((item) => (
               <a
                 key={item.href}
                 href={item.href}
-                className={`flex items-center justify-between rounded-2xl px-4 py-2.5 text-sm font-medium transition ${
+                className={`flex shrink-0 items-center justify-between whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-medium transition ${
                   activeSection === item.href.replace("#", "")
                     ? "bg-[#EEF0FF] text-[#1E3A8A]"
                     : "text-slate-600 hover:bg-[#F3F4F6] hover:text-[#0F172A]"
@@ -1714,7 +1748,7 @@ export default function CustomerPortalPage() {
 
           <button
             type="button"
-            className="mt-5 flex w-full items-center justify-center rounded-2xl border border-[#E5E7EB] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F3F4F6]"
+            className="mt-3 flex w-full items-center justify-center rounded-2xl border border-[#E5E7EB] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F3F4F6] lg:mt-5"
             onClick={() => {
               clearStoredCustomerToken();
               router.push("/login");
@@ -1735,7 +1769,7 @@ export default function CustomerPortalPage() {
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                   <div>
                     <h1 className="text-[1.9rem] font-semibold tracking-[-0.05em]">
-                      <span className="mr-2 text-lg font-normal tracking-normal text-slate-600">Welcome back</span>
+                      <span className="mr-2 text-lg font-normal tracking-normal text-slate-600">Hello</span>
                       {profile?.fullName ? profile.fullName.split(" ")[0] : ""}
                     </h1>
                   </div>
@@ -1762,7 +1796,7 @@ export default function CustomerPortalPage() {
             <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-5">
               <section className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-label="Choose payment method">
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Payment</div>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-slate-950">Authorize your card</h2>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-slate-950">{bookingPaymentMethod === "STRIPE" ? "Secure payment" : "Pay by e-transfer"}</h2>
                 <div className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-slate-950">
                   {toCurrency(bookingPaymentChoice.amount, bookingPaymentChoice.currency)}
                 </div>
@@ -1773,11 +1807,13 @@ export default function CustomerPortalPage() {
                   {bookingPaymentChoice.vehicleDetails ? <div className="mt-1 leading-6"><span className="font-medium text-slate-500">Vehicle:</span> {bookingPaymentChoice.vehicleDetails}</div> : null}
                   {bookingPaymentChoice.durationHours ? <div className="mt-1 leading-6"><span className="font-medium text-slate-500">Duration:</span> {bookingPaymentChoice.durationHours} {bookingPaymentChoice.durationHours === 1 ? "hour" : "hours"}</div> : null}
                 </div>
-                <p className="mt-4 rounded-2xl bg-[#EEF6FF] px-4 py-3 text-sm font-medium leading-6 text-[#1D4ED8]">
-                  Your card will be authorized now, but you will only be charged after a driver accepts.
-                </p>
+                <div className="mt-4 grid grid-cols-2 gap-1 rounded-2xl border border-[#DCE4F4] bg-slate-50 p-1">
+                  <button type="button" onClick={() => setBookingPaymentMethod("STRIPE")} className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${bookingPaymentMethod === "STRIPE" ? "bg-[#EEF2FF] text-[#3730A3]" : "text-slate-600 hover:bg-white"}`}>Card</button>
+                  <button type="button" onClick={() => setBookingPaymentMethod("INTERAC")} className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${bookingPaymentMethod === "INTERAC" ? "bg-[#EEF2FF] text-[#3730A3]" : "text-slate-600 hover:bg-white"}`}>E-transfer</button>
+                </div>
+                {bookingPaymentMethod === "STRIPE" ? <p className="mt-4 rounded-2xl bg-[#EEF6FF] px-4 py-3 text-sm font-medium leading-6 text-[#1D4ED8]">Your card will be authorized now, but you will only be charged after a driver accepts.</p> : null}
 
-                {bookingPaymentChoice.interacInstructions ? (
+                {bookingPaymentMethod === "INTERAC" && bookingPaymentChoice.interacInstructions ? (
                   <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-slate-700">
                     <div>Send payment to <span className="font-semibold">{bookingPaymentChoice.interacInstructions.recipientEmail}</span></div>
                     <div>Reference: <span className="font-semibold">{bookingPaymentChoice.interacInstructions.reference}</span></div>
@@ -1822,6 +1858,17 @@ export default function CustomerPortalPage() {
                         View awaiting payment
                       </button>
                     ) : null}
+                  </div>
+                ) : bookingPaymentMethod === "INTERAC" ? (
+                  <div className="mt-5">
+                    <button
+                      type="button"
+                      onClick={() => void requestBookingInterac()}
+                      disabled={Boolean(bookingPaymentAction)}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {bookingPaymentAction === "interac" ? <><LoadingSpinner /> Preparing...</> : "Get e-transfer details"}
+                    </button>
                   </div>
                 ) : (
                   <div className="mt-5">
@@ -2156,6 +2203,8 @@ export default function CustomerPortalPage() {
                 currentBillingCycle={membershipAccount.membership.billingCycle}
                 actionKey={membershipAction}
                 onStripe={startMembershipStripe}
+                onInterac={requestMembershipInterac}
+                onConfirmInterac={confirmMembershipInterac}
                 onDowngradeToBasic={async () => {
                   setMembershipAction("basic");
                   setStatus("");
@@ -2179,7 +2228,7 @@ export default function CustomerPortalPage() {
           {activeSection === "schedule" ? <SectionPanel
             id="schedule"
             eyebrow="Schedule trip"
-            title="Book a future trip"
+              title="Book a trip"
           >
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="block xl:col-span-2">
@@ -2427,7 +2476,7 @@ export default function CustomerPortalPage() {
                   type="button"
                   onClick={() => setAwaitingPaymentTab(tab)}
                   className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                    awaitingPaymentTab === tab ? "bg-[#2563EB] text-white shadow-sm" : "text-slate-600 hover:bg-[#F1F5F9]"
+                    awaitingPaymentTab === tab ? "bg-[#EEF2FF] text-[#3730A3] shadow-sm" : "text-slate-600 hover:bg-[#F1F5F9]"
                   }`}
                 >
                   {label} ({count})
@@ -2462,9 +2511,9 @@ export default function CustomerPortalPage() {
                         onClick={() => {
                           window.location.hash = "membership";
                         }}
-                        className="inline-flex min-w-[152px] items-center justify-center rounded-xl bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_-12px_rgba(37,99,235,0.9)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:ring-offset-2"
+                        className="inline-flex min-w-[152px] items-center justify-center rounded-xl border border-[#DDE3EE] bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2"
                       >
-                        Continue with Stripe
+                        View membership
                       </button>
                       <button
                         type="button"
