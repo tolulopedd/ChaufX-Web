@@ -1,7 +1,7 @@
 "use client";
 
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatCard, StatusPill } from "../../components/admin-primitives";
+import { EmptyState, getStatusTone, StatCard, StatusPill } from "../../components/admin-primitives";
 import { dashboardFallback, useAdminResource } from "../../lib/api";
 
 export default function DashboardPage() {
@@ -60,7 +60,7 @@ export default function DashboardPage() {
                     <div className="mt-2 text-lg font-semibold tracking-[-0.04em] text-slate-950">{trip.pickupLocation}</div>
                     <div className="text-sm text-slate-500">to {trip.destinationLocation}</div>
                   </div>
-                  <StatusPill label={trip.status} tone="violet" />
+                  <StatusPill label={trip.status} tone={getStatusTone(trip.status)} />
                 </div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-white bg-white px-4 py-3">

@@ -44,7 +44,8 @@ const navSections: NavSection[] = [
     title: "Operations",
     items: [
       { href: "/bookings", label: "Bookings", icon: BookingsIcon, roles: ["admin"] },
-      { href: "/trips", label: "Active Trips", icon: TripsIcon, roles: ["admin"] },
+      { href: "/admin-booking", label: "Manual booking", icon: BookingsIcon, roles: ["admin"] },
+      { href: "/trips", label: "Trips", icon: TripsIcon, roles: ["admin"] },
       { href: "/messages", label: "Messages", icon: MessagesIcon, roles: ["admin"] }
     ]
   },
@@ -104,16 +105,16 @@ export function AdminShell({
 
   return (
     <div className="min-h-screen bg-[#F7F8FB] text-[#0F172A]">
-      <div className="mx-auto grid max-w-[1440px] gap-0 px-3 py-3 lg:grid-cols-[232px_1fr]">
-        <aside className="border-r border-[#E5E7EB] bg-white px-4 py-4">
+      <div className="mx-auto grid max-w-[1440px] gap-0 px-3 py-3 lg:grid-cols-[232px_minmax(0,1fr)]">
+        <aside className="border-b border-[#E5E7EB] bg-white px-4 py-4 lg:sticky lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:border-b-0 lg:border-r">
           <AdminBrand />
-          <nav className="mt-4 space-y-4">
+          <nav className="mt-4 flex gap-4 overflow-x-auto pb-2 lg:block lg:space-y-4 lg:overflow-visible lg:pb-0">
             {visibleNavSections.map((section) => (
-              <div key={section.title}>
+              <div key={section.title} className="shrink-0">
                 <div className="mb-1.5 px-2.5 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400">
                   {section.title}
                 </div>
-                <div className="space-y-1.5">
+                <div className="flex gap-1.5 lg:block lg:space-y-1.5">
                   {section.items.map((item) => {
                     const active = pathname === item.href;
                     const Icon = item.icon;
@@ -121,7 +122,7 @@ export function AdminShell({
                       <Link
                         key={item.href}
                         href={item.href}
-                        className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium transition ${
+                        className={`flex items-center gap-2.5 whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium transition ${
                           active ? "bg-[#EEF0FF] text-[#4338CA]" : "text-slate-600 hover:bg-[#F7F8FB] hover:text-[#0F172A]"
                         }`}
                       >
@@ -145,7 +146,7 @@ export function AdminShell({
 
           <button
             type="button"
-            className="mt-4 flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F3F4F6]"
+            className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F3F4F6] lg:mt-4"
             onClick={() => {
               clearStoredToken();
               clearStoredWebRole();
@@ -159,16 +160,13 @@ export function AdminShell({
 
         </aside>
 
-        <main className="space-y-4 bg-[#F7F8FB] px-4 py-4">
+        <main className="min-w-0 space-y-4 bg-[#F7F8FB] px-1 py-4 sm:px-4">
           <section className="border-b border-[#E5E7EB] pb-3">
             <div className="flex flex-col gap-2.5 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#4F46E5]">Admin workspace</div>
                 <h1 className="mt-1.5 text-[1.65rem] font-semibold tracking-[-0.05em] text-slate-950">{title}</h1>
                 {description ? <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">{description}</p> : null}
-              </div>
-              <div className="rounded-full border border-[#DCDDFF] bg-[#EEF0FF] px-3 py-1.5 text-xs font-medium text-[#4338CA]">
-                ChaufX
               </div>
             </div>
           </section>
@@ -192,7 +190,7 @@ export function Panel({
   subtitle?: string;
 }) {
   return (
-    <section className="rounded-[18px] border border-[#E5E7EB] bg-white">
+    <section className="rounded-[18px] border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <div className="flex flex-col gap-2 border-b border-[#F1F5F9] px-4 py-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-[1.05rem] font-semibold tracking-[-0.04em] text-slate-950">{title}</h2>

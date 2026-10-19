@@ -3,16 +3,22 @@
 import { ReactNode } from "react";
 
 export const adminInputClass =
-  "w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[#4F46E5] focus:ring-2 focus:ring-[#EEF0FF]";
+  "w-full rounded-xl border border-[#DDE3EE] bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#4F46E5] focus:ring-2 focus:ring-[#EEF0FF] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
 export const adminPrimaryButtonClass =
-  "rounded-xl bg-[#2563EB] px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:hover:bg-slate-200";
+  "rounded-xl bg-[#2563EB] px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-2 focus:ring-[#BFDBFE] focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:hover:bg-slate-200";
 
 export const adminSecondaryButtonClass =
-  "rounded-xl border border-[#DCDDFF] bg-[#EEF0FF] px-3.5 py-2 text-sm font-semibold text-[#4338CA] transition hover:bg-[#E4E7FF] disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100";
+  "rounded-xl border border-[#DDE3EE] bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100";
 
 export const adminGhostButtonClass =
-  "rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60";
+  "rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
+
+export const adminFilterButtonClass =
+  "rounded-xl border border-[#DDE3EE] bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50";
+
+export const adminFilterButtonActiveClass =
+  "rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] px-3.5 py-2.5 text-sm font-semibold text-[#3730A3]";
 
 export const adminTableHeadClass =
   "text-left text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-500";
@@ -29,6 +35,15 @@ const toneStyles = {
 } as const;
 
 type Tone = keyof typeof toneStyles;
+
+export function getStatusTone(label: string): Tone {
+  const value = label.toUpperCase();
+  if (value.includes("CANCEL") || value.includes("REJECT") || value.includes("FAIL") || value.includes("DISABLED")) return "rose";
+  if (value.includes("COMPLETE") || value.includes("ACTIVE") || value.includes("APPROVED") || value.includes("PAID") || value.includes("RECORDED") || value.includes("RESOLVED")) return "emerald";
+  if (value.includes("PENDING") || value.includes("AWAIT") || value.includes("REVIEW") || value.includes("NEW")) return "amber";
+  if (value.includes("ENROUTE") || value.includes("ACCEPT")) return "violet";
+  return "neutral";
+}
 
 function formatStatusLabel(label: string) {
   if (/^[A-Z_]+$/.test(label)) {

@@ -171,7 +171,7 @@ export default function ReferralPartnersPage() {
   }
 
   return (
-    <AdminShell title="Referral Partners" description="Manage reusable referral links and attributed registrations.">
+    <AdminShell title="Referral Partners">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard title="Partners" value={data.summary.totalPartners} detail={`${data.summary.activePartners} active`} />
         <StatCard title="Customers" value={data.summary.customersRegistered} detail="Registered by referral" />
@@ -184,7 +184,7 @@ export default function ReferralPartnersPage() {
       {error ? <div className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
       {formOpen ? (
-        <Panel title={selected ? "Edit partner" : "Create partner"} subtitle="A unique code is generated when Partner Code is left blank." aside={
+        <Panel title={selected ? "Edit partner" : "Create partner"} aside={
           <div className="flex gap-2">
             <button className={adminGhostButtonClass} type="button" onClick={() => setFormOpen(false)}>Cancel</button>
             <button className={adminPrimaryButtonClass} type="button" disabled={saving} onClick={savePartner}>{saving ? "Saving..." : "Save"}</button>
@@ -221,7 +221,7 @@ export default function ReferralPartnersPage() {
         </button>
       }>
         {loading ? <p className="text-sm text-slate-500">Loading partners...</p> : data.partners.length === 0 ? (
-          <EmptyState title="No referral partners" description="Create a partner to generate customer and driver referral links." />
+          <EmptyState title="No referral partners" description="Create a partner to generate referral links." />
         ) : (
           <div className="grid gap-3">
             {data.partners.map((partner) => (
@@ -254,7 +254,7 @@ export default function ReferralPartnersPage() {
       </Panel>
 
       {selected ? (
-        <Panel title={`${selected.name} referrals`} subtitle="Customer account status and driver approval status use the existing workflows.">
+        <Panel title={`${selected.name} referrals`}>
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <select className={adminInputClass} value={filters.userType} onChange={(event) => setFilters((current) => ({ ...current, userType: event.target.value, status: "" }))}><option value="">All user types</option><option value="CUSTOMER">Customers</option><option value="DRIVER">Drivers</option></select>
             <select className={adminInputClass} value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">All statuses</option>{filters.userType === "DRIVER" ? <><option value="PENDING">Pending</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></> : <><option value="ACTIVE">Active</option><option value="PENDING_APPROVAL">Pending approval</option><option value="DISABLED">Disabled</option></>}</select>

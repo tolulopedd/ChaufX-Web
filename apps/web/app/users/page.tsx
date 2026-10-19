@@ -365,7 +365,7 @@ function UsersPageContent() {
   }
 
   return (
-    <AdminShell title="Users" description="Manage accounts.">
+    <AdminShell title="Users">
       <div className="grid gap-4 lg:grid-cols-4">
         <StatCard title="All accounts" value={data.length} detail="All roles." />
         <StatCard title="Customers" value={customerCount} detail="Customer accounts." />
@@ -508,7 +508,7 @@ function UsersPageContent() {
         {selectedUser ? (
         <Panel
           title={selectedUser ? `${selectedUser.fullName}` : "User details"}
-          subtitle={selectedUser ? "Update account details and profile-specific settings." : "Select a user to manage their account."}
+          subtitle={selectedUser ? "Account and profile settings." : "Select a user to view details."}
           aside={
             selectedUser ? (
               <div className="flex items-center gap-2">

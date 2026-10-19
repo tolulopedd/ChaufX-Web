@@ -627,6 +627,34 @@ export async function submitContactMessage(payload: {
   return data;
 }
 
+export type ContactFeedbackConversation = {
+  subject: string;
+  entries: Array<{
+    author: "CONTACT" | "ADMIN";
+    message: string;
+    createdAt: string;
+    displayName: string;
+  }>;
+};
+
+export async function fetchContactFeedback(token: string): Promise<ContactFeedbackConversation> {
+  const response = await fetch(`${API_BASE}/contact-messages/feedback/${encodeURIComponent(token)}`, { cache: "no-store" });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error?.message ?? "Unable to open this feedback conversation.");
+  return data as ContactFeedbackConversation;
+}
+
+export async function replyToContactFeedback(token: string, message: string) {
+  const response = await fetch(`${API_BASE}/contact-messages/feedback/${encodeURIComponent(token)}/replies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message })
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error?.message ?? "Unable to send your reply.");
+  return data;
+}
+
 export async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await authenticatedWebFetch("admin", path, {
     cache: "no-store",
@@ -909,4 +937,12 @@ export const contactMessagesFallback: Array<{
   resolvedByUserId?: string | null;
   createdAt: string;
   updatedAt: string;
+  replies?: Array<{
+    id: string;
+    author: "CONTACT" | "ADMIN";
+    message: string;
+    createdAt: string;
+    emailSentAt?: string | null;
+    adminUser?: { fullName: string } | null;
+  }>;
 }> = [];

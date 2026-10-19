@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
-import { EmptyState, StatCard, StatusPill, adminTableCellClass, adminTableHeadClass } from "../../components/admin-primitives";
+import { EmptyState, StatCard, StatusPill, adminFilterButtonActiveClass, adminFilterButtonClass, adminTableCellClass, adminTableHeadClass } from "../../components/admin-primitives";
 import { adminFetch, updateSettlementStatus, useAdminResource } from "../../lib/api";
 
 type SettlementTrip = {
@@ -246,9 +246,7 @@ export default function SettlementsPage() {
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab as typeof activeTab)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              activeTab === tab ? "bg-[#2563EB] text-white" : "border border-[#D7DEEF] bg-white text-slate-700 hover:bg-[#F8FAFC]"
-            }`}
+            className={activeTab === tab ? adminFilterButtonActiveClass : adminFilterButtonClass}
           >
             {label}
           </button>
@@ -305,6 +303,17 @@ export default function SettlementsPage() {
                       <td className={`${adminTableCellClass} text-right`}>
                         {payment.status === "RECORDED" ? (
                           <span className="text-xs font-medium text-emerald-700">Activated {payment.recordedAt ? new Date(payment.recordedAt).toLocaleDateString() : ""}</span>
+                        ) : payment.method === "INTERAC" && payment.interacTransferConfirmedAt ? (
+                          <button
+                            type="button"
+                            onClick={() => void confirmInteracPayment(payment)}
+                            disabled={savingId === payment.id}
+                            className="rounded-xl bg-[#2563EB] px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {savingId === payment.id ? "Confirming..." : "Confirm payment"}
+                          </button>
+                        ) : payment.method === "INTERAC" ? (
+                          <span className="text-xs text-slate-500">Awaiting customer</span>
                         ) : (
                           <span className="text-xs text-slate-400">-</span>
                         )}

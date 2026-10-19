@@ -15,6 +15,7 @@ import {
 import { adminFetch, useAdminResource } from "../../lib/api";
 
 const statusToneMap: Record<string, "violet" | "amber" | "emerald" | "rose" | "navy" | "neutral"> = {
+  AWAITING_PAYMENT: "amber",
   PENDING: "amber",
   ACCEPTED: "violet",
   ENROUTE: "navy",
@@ -105,6 +106,10 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [requestTypeFilter, setRequestTypeFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentReceivedAt, setPaymentReceivedAt] = useState("");
+  const [adminActionMessage, setAdminActionMessage] = useState("");
 
   const assignedCount = bookings.filter((booking) => booking.assignedDriverId).length;
   const unassignedCount = bookings.length - assignedCount;
@@ -159,6 +164,14 @@ export default function BookingsPage() {
     [bookings, filteredBookings, selectedId]
   );
 
+  useEffect(() => {
+    if (!selectedBooking) return;
+    setAdminActionMessage("");
+    setPaymentReference(selectedBooking.payment?.providerReference ?? "");
+    setPaymentAmount(selectedBooking.payment?.amount ? String(selectedBooking.payment.amount) : String(selectedBooking.fareEstimate ?? ""));
+    setPaymentReceivedAt(new Date().toISOString().slice(0, 16));
+  }, [selectedBooking?.id]);
+
   async function updateBookingStatus(bookingId: string, status: string) {
     setBusyBookingId(bookingId);
 
@@ -187,6 +200,32 @@ export default function BookingsPage() {
         body: JSON.stringify({ driverId })
       });
       await reload();
+    } finally {
+      setBusyBookingId("");
+    }
+  }
+
+  async function confirmAssistedPayment(bookingId: string) {
+    if (!paymentReference.trim() || !paymentAmount || !paymentReceivedAt) return;
+    setBusyBookingId(bookingId);
+    setAdminActionMessage("");
+    try {
+      const result = await adminFetch<any>(`/admin/assisted-bookings/${bookingId}/confirm-payment`, {
+        method: "POST",
+        body: JSON.stringify({
+          paymentReference: paymentReference.trim(),
+          amount: Number(paymentAmount),
+          receivedAt: new Date(paymentReceivedAt).toISOString()
+        })
+      });
+      await reload();
+      setAdminActionMessage(
+        result.dispatch?.notifiedDrivers
+          ? `Payment confirmed. The request was sent to ${result.dispatch.notifiedDrivers} eligible driver${result.dispatch.notifiedDrivers === 1 ? "" : "s"}.`
+          : "Payment confirmed. No eligible driver is available yet; matching will continue as drivers become available."
+      );
+    } catch (error) {
+      setAdminActionMessage(error instanceof Error ? error.message : "Unable to confirm payment.");
     } finally {
       setBusyBookingId("");
     }
@@ -350,6 +389,25 @@ export default function BookingsPage() {
                   { label: "Payment status", value: selectedBooking.payment?.status ?? "Not recorded" }
                 ]}
               />
+
+              {selectedBooking.adminAssistedAt && selectedBooking.payment?.method === "INTERAC" ? (
+                <div className="rounded-2xl border border-[#C7D2FE] bg-[#EEF2FF] px-4 py-4">
+                  <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#4338CA]">Admin-assisted Interac payment</div>
+                  {selectedBooking.payment?.status === "PENDING" && selectedBooking.status === "AWAITING_PAYMENT" ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="E-transfer reference" className={adminInputClass} />
+                      <input type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Amount received" className={adminInputClass} />
+                      <input type="datetime-local" value={paymentReceivedAt} onChange={(event) => setPaymentReceivedAt(event.target.value)} className={adminInputClass} />
+                      <button type="button" disabled={busyBookingId === selectedBooking.id || !paymentReference.trim() || !paymentAmount || !paymentReceivedAt} onClick={() => void confirmAssistedPayment(selectedBooking.id)} className={`${adminPrimaryButtonClass} md:col-span-3`}>
+                        {busyBookingId === selectedBooking.id ? "Confirming..." : "Confirm payment and route drivers"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-sm text-emerald-700">Confirmed by {selectedBooking.payment?.confirmedByAdminName ?? "Admin"} on {formatDate(selectedBooking.payment?.recordedAt)}. Driver routing has started.</div>
+                  )}
+                  {adminActionMessage ? <p className="mt-3 text-sm text-slate-700">{adminActionMessage}</p> : null}
+                </div>
+              ) : null}
 
               {selectedBooking.dispatches?.length ? (
                 <div className="rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-4">

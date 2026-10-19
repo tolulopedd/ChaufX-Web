@@ -89,6 +89,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum BookingPaymentMethod {
+  STRIPE
+  INTERAC
+}
+
 enum TripExtensionStatus {
   PENDING
   RECORDED
@@ -190,6 +195,11 @@ enum ContactMessageStatus {
   RESOLVED
 }
 
+enum ContactMessageReplyAuthor {
+  CONTACT
+  ADMIN
+}
+
 enum EmailVerificationPurpose {
   CUSTOMER_SIGNUP
   DRIVER_ONBOARDING
@@ -239,6 +249,7 @@ model User {
   blogPostsAuthored    BlogPost[]
   tripMessagesSent     TripMessage[]
   referralAttribution ReferralAttribution?
+  contactMessageReplies ContactMessageReply[] @relation("ContactMessageReplyAuthor")
 }
 
 model ReferralPartner {
@@ -572,6 +583,8 @@ model Booking {
   expectedDurationMinutes Int
   specialNotes            String?
   vehicleDetails          String?
+  adminAssistedAt         DateTime?
+  adminAssistedByUserId   String?
   fareEstimate            Float
   bookedHourlyRate        Float?
   promotionOriginalFare   Float?
@@ -692,6 +705,7 @@ model Payment {
   amount            Float
   currency          String        @default("USD")
   status            PaymentStatus @default(PENDING)
+  method            BookingPaymentMethod @default(STRIPE)
   providerReference String?
   stripeCheckoutSessionId String? @unique
   stripePaymentIntentId   String? @unique
@@ -702,6 +716,8 @@ model Payment {
   authorizationReleasedAt DateTime?
   interacInstructionsExpiresAt DateTime?
   interacTransferConfirmedAt   DateTime?
+  confirmedByUserId            String?
+  confirmedByAdminName         String?
   recordedAt        DateTime?
   notes             String?
   createdAt         DateTime      @default(now())
@@ -900,8 +916,26 @@ model ContactMessage {
   status           ContactMessageStatus @default(NEW)
   resolvedAt       DateTime?
   resolvedByUserId String?
+  feedbackTokenHash String?             @unique
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
+  replies          ContactMessageReply[]
+
   @@index([status, createdAt])
+}
+
+model ContactMessageReply {
+  id               String                     @id @default(uuid())
+  contactMessageId String
+  author           ContactMessageReplyAuthor
+  message          String
+  adminUserId      String?
+  emailSentAt      DateTime?
+  createdAt        DateTime                   @default(now())
+
+  contactMessage ContactMessage @relation(fields: [contactMessageId], references: [id], onDelete: Cascade)
+  adminUser      User?          @relation("ContactMessageReplyAuthor", fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([contactMessageId, createdAt])
 }

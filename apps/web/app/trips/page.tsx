@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AdminShell, Panel } from "../../components/admin-shell";
 import {
   EmptyState,
+  getStatusTone,
   StatCard,
   StatusPill,
   adminGhostButtonClass,
@@ -168,7 +169,7 @@ export default function TripsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <StatusPill label={trip.status} tone="violet" />
+                    <StatusPill label={trip.status} tone={getStatusTone(trip.status)} />
                     <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#4338CA]">Open</span>
                   </div>
                 </div>
@@ -189,7 +190,7 @@ export default function TripsPage() {
                   <h2 className="text-2xl font-semibold tracking-[-0.05em] text-slate-950">
                     {selectedTrip.pickupLocation} to {selectedTrip.destinationLocation}
                   </h2>
-                  <StatusPill label={selectedTrip.status} tone="violet" />
+                  <StatusPill label={selectedTrip.status} tone={getStatusTone(selectedTrip.status)} />
                 </div>
                 <p className="mt-2 text-sm text-slate-500">
                   {selectedTrip.assignedDriver?.user?.fullName ?? "Assigned driver"} · {formatDate(selectedTrip.scheduledStartAt)}

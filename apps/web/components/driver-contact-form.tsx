@@ -77,7 +77,7 @@ export function DriverContactForm({
                 message: form.message,
                 source
               });
-              setStatus("Your message has been sent to the ChaufX admin team.");
+              setStatus("Your message has been sent to the ChaufX Team.");
               setForm({
                 fullName: "",
                 email: "",
