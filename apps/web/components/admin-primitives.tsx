@@ -15,10 +15,10 @@ export const adminGhostButtonClass =
   "rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-[#D1D5DB] hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
 export const adminFilterButtonClass =
-  "rounded-xl border border-[#DDE3EE] bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50";
+  "rounded-xl border border-[#DDE3EE] bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2";
 
 export const adminFilterButtonActiveClass =
-  "rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] px-3.5 py-2.5 text-sm font-semibold text-[#3730A3]";
+  "rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] px-3.5 py-2.5 text-sm font-semibold text-[#3730A3] focus:outline-none focus:ring-2 focus:ring-[#C7D2FE] focus:ring-offset-2";
 
 export const adminTableHeadClass =
   "text-left text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-500";

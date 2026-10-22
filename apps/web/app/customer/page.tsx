@@ -1787,10 +1787,10 @@ export default function CustomerPortalPage() {
             </>
           ) : null}
 
-          {status ? <p className="rounded-2xl bg-[#EEF6FF] px-4 py-3 text-sm text-[#1D4ED8]">{status}</p> : null}
-          {profileError ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{profileError}</p> : null}
-          {bookingsError ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{bookingsError}</p> : null}
-          {membershipError ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{membershipError}</p> : null}
+          {status ? <p role="status" aria-live="polite" className="rounded-2xl bg-[#EEF6FF] px-4 py-3 text-sm text-[#1D4ED8]">{status}</p> : null}
+          {profileError ? <p role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{profileError}</p> : null}
+          {bookingsError ? <p role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{bookingsError}</p> : null}
+          {membershipError ? <p role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{membershipError}</p> : null}
 
           {bookingPaymentChoice ? (
             <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-5">

@@ -24,6 +24,7 @@ type SettlementRow = {
   driverId: string;
   driverName: string;
   driverEmail: string;
+  payoutEmail: string | null;
   tripCount: number;
   grossAmount: number;
   platformSharePercent: number;
@@ -427,6 +428,9 @@ export default function SettlementsPage() {
                       <StatusPill label={settlement.status === "PAID" ? "Paid out" : "Awaiting payout"} tone={settlement.status === "PAID" ? "emerald" : "amber"} />
                     </div>
                     <div className="mt-1 text-sm text-slate-500">{settlement.driverEmail}</div>
+                    <div className="mt-1 text-sm text-slate-700">
+                      Weekly payout: {settlement.payoutEmail ?? "Payout email not provided"}
+                    </div>
                     <div className="mt-3 text-sm font-medium text-slate-700">{formatDateRange(settlement.weekStart, settlement.weekEnd)}</div>
                     <div className="mt-2 space-y-1 text-xs text-slate-500">
                       {settlement.paidAt ? <div>Paid on {new Date(settlement.paidAt).toLocaleString()}</div> : null}

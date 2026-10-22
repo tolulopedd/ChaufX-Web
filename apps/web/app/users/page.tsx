@@ -46,6 +46,7 @@ type AdminUserRecord = {
     serviceAreas: string[];
     availabilitySchedule?: string | null;
     availabilityStatus: boolean;
+    payoutEmail?: string | null;
     approvedAt?: string | null;
     application?: {
       id: string;
@@ -676,6 +677,12 @@ function UsersPageContent() {
                         <option value="false">Offline</option>
                       </select>
                     </label>
+                    <div className="space-y-1.5">
+                      <span className="text-sm font-medium text-slate-700">Weekly payout email</span>
+                      <div className={`${adminInputClass} flex min-h-[46px] items-center bg-slate-100 text-slate-700`}>
+                        {selectedUser.driver.payoutEmail ?? "Not provided"}
+                      </div>
+                    </div>
                     <label className="space-y-1.5 md:col-span-2">
                       <span className="text-sm font-medium text-slate-700">Service areas</span>
                       <input
