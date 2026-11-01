@@ -30,8 +30,7 @@ async function fetchPublicBlogResource(path: string, init?: RequestInit) {
   for (const base of bases) {
     try {
       const response = await fetch(`${base}${path}`, {
-        cache: "no-store",
-        ...init
+        ...(init ?? { cache: "no-store" })
       });
 
       if (!response.ok) {

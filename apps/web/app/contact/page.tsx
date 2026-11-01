@@ -1,9 +1,25 @@
+import type { Metadata } from "next";
 import { DriverContactForm } from "../../components/driver-contact-form";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../components/structured-data";
+import { pageMetadata } from "../../lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Contact ChaufX",
+  description: "Contact the ChaufX team for customer service, booking help, driver onboarding, approval, or general platform questions.",
+  path: "/contact"
+});
 
 export default function ContactPage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Contact", path: "/contact" }
+        ])}
+      />
+      <PublicPageShell
       heroTitle="Contact"
       heroCopy="Reach the ChaufX team for onboarding, service, approval, or general platform questions."
     >
@@ -38,6 +54,7 @@ export default function ContactPage() {
           </div>
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }

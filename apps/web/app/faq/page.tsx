@@ -1,16 +1,42 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../components/structured-data";
 import { faqCategories } from "../../lib/faqs";
+import { pageMetadata } from "../../lib/seo";
 
-export const metadata: Metadata = {
-  title: "Frequently Asked Questions | ChaufX",
-  description: "Answers to common questions about ChaufX bookings, drivers, pricing, safety, accounts, and support."
-};
+export const metadata: Metadata = pageMetadata({
+  title: "Frequently Asked Questions",
+  description: "Answers about ChaufX bookings, professional drivers, pricing, travelling in your own vehicle, safety, accounts, and support.",
+  path: "/faq"
+});
 
 export default function FaqPage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData
+        data={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Frequently Asked Questions", path: "/faq" }
+          ]),
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: faqCategories.flatMap((category) =>
+              category.items.map((item) => ({
+                "@type": "Question",
+                name: item.question,
+                acceptedAnswer: {
+                  "@type": "Answer",
+                  text: [...item.answer, ...(item.bullets ?? [])].join(" ")
+                }
+              }))
+            )
+          }
+        ]}
+      />
+      <PublicPageShell
       heroTitle="Frequently Asked Questions"
       heroCopy="Find quick answers about booking a professional driver, travelling in your own vehicle, pricing, driver approval, and support."
     >
@@ -87,6 +113,7 @@ export default function FaqPage() {
           </div>
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }

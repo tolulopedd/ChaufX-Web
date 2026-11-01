@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ManagedBlogArticle } from "../../../components/managed-blog-article";
 import { PublicPageShell } from "../../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../../components/structured-data";
 import { fetchPublicBlogPost } from "../../../lib/blog";
+import { absoluteUrl } from "../../../lib/seo";
 
 type BlogDetailPageProps = {
   params: Promise<{
@@ -17,8 +19,16 @@ export async function generateMetadata({ params }: BlogDetailPageProps): Promise
   try {
     const post = await fetchPublicBlogPost(slug);
     return {
-      title: `${post.title} | ChaufX Blog`,
-      description: post.summary
+      title: post.title,
+      description: post.summary,
+      alternates: { canonical: `/blog/${post.slug}` },
+      openGraph: {
+        type: "article",
+        url: `/blog/${post.slug}`,
+        title: post.title,
+        description: post.summary,
+        images: post.coverImageUrl ? [{ url: post.coverImageUrl }] : undefined
+      }
     };
   } catch {
     return {
@@ -35,7 +45,32 @@ export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
     const post = await fetchPublicBlogPost(slug);
 
     return (
-      <PublicPageShell>
+      <>
+        <StructuredData
+          data={[
+            breadcrumbSchema([
+              { name: "Home", path: "/" },
+              { name: "Blog", path: "/blog" },
+              { name: post.title, path: `/blog/${post.slug}` }
+            ]),
+            {
+              "@context": "https://schema.org",
+              "@type": "BlogPosting",
+              headline: post.title,
+              description: post.summary,
+              mainEntityOfPage: absoluteUrl(`/blog/${post.slug}`),
+              url: absoluteUrl(`/blog/${post.slug}`),
+              datePublished: post.publishedAt ?? post.createdAt,
+              dateModified: post.updatedAt,
+              image: post.coverImageUrl ?? undefined,
+              author: post.author
+                ? { "@type": "Person", name: post.author.fullName }
+                : { "@type": "Organization", name: "ChaufX" },
+              publisher: { "@type": "Organization", name: "ChaufX", url: absoluteUrl("/") }
+            }
+          ]}
+        />
+        <PublicPageShell>
         <section className="bg-white">
           <div className="mx-auto max-w-7xl px-5 py-12 md:px-8">
             <div className="mb-8">
@@ -53,7 +88,8 @@ export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
             <ManagedBlogArticle post={post} />
           </div>
         </section>
-      </PublicPageShell>
+        </PublicPageShell>
+      </>
     );
   } catch (error) {
     if (error instanceof Error && error.message === "Blog article not found.") {

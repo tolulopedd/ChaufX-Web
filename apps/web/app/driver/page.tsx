@@ -1,5 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../components/structured-data";
+import { pageMetadata } from "../../lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Become a ChaufX Driver",
+  description: "Apply to drive customers in their own vehicles with ChaufX. Learn about driver requirements, flexible work, onboarding, and trips in the GTA.",
+  path: "/driver"
+});
 
 const driverBenefits = [
   {
@@ -115,7 +124,14 @@ function SectionHeading({ eyebrow, title, body }: { eyebrow?: string; title: str
 
 export default function BecomeDriverPage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Become a Driver", path: "/driver" }
+        ])}
+      />
+      <PublicPageShell
       heroTitle="Turn Your Driving Skills Into Flexible Income"
       heroCopy="Drive customers in their own vehicles. Choose trips that fit your schedule. Join a growing community of professional drivers serving the Greater Toronto Area (GTA)."
       heroActions={
@@ -266,6 +282,7 @@ export default function BecomeDriverPage() {
           </div>
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }

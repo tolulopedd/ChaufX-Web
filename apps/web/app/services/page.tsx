@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../components/structured-data";
+import { pageMetadata, siteUrl } from "../../lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Professional Driver Services",
+  description: "Explore ChaufX personal driving, assisted trips, airport travel, business driving, and designated driver services in your own vehicle.",
+  path: "/services"
+});
 
 const services = [
   {
@@ -35,7 +44,32 @@ const services = [
 
 export default function ServicesPage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData
+        data={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Services", path: "/services" }
+          ]),
+          {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            name: "ChaufX professional driver services",
+            itemListElement: services.map((service, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              item: {
+                "@type": "Service",
+                name: service.title,
+                description: service.body,
+                provider: { "@id": `${siteUrl}/#organization` },
+                url: `${siteUrl}/services#${service.id}`
+              }
+            }))
+          }
+        ]}
+      />
+      <PublicPageShell
       heroTitle="Services"
       heroCopy="ChaufX provides simple chauffeur service in your own vehicle for personal, assisted, and business travel."
     >
@@ -55,6 +89,7 @@ export default function ServicesPage() {
           </div>
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }

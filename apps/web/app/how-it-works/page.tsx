@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../components/structured-data";
+import { pageMetadata } from "../../lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "How It Works",
+  description: "Learn how to book a ChaufX driver, get matched with an approved professional, and travel in the comfort of your own vehicle.",
+  path: "/how-it-works"
+});
 
 const customerSteps = [
   {
@@ -23,7 +32,14 @@ const driverSteps = [
 
 export default function HowItWorksPage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "How It Works", path: "/how-it-works" }
+        ])}
+      />
+      <PublicPageShell
       heroTitle="How It Works"
       heroCopy="ChaufX keeps the booking journey simple for customers and the onboarding journey clear for chauffeurs."
     >
@@ -59,6 +75,7 @@ export default function HowItWorksPage() {
           </div>
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }

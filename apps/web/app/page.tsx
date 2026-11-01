@@ -2,13 +2,29 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { PublicPageShell } from "../components/public-page-shell";
+import { StructuredData } from "../components/structured-data";
 import { SoroBlogPreview } from "../components/soro-blog-preview";
 import { featuredFaqs } from "../lib/faqs";
 import { policyDocuments } from "../lib/policy-documents";
+import { pageMetadata, siteUrl } from "../lib/seo";
 
-export const metadata: Metadata = {
-  title: "ChaufX",
-  description: "ChaufX Canada public website."
+export const metadata: Metadata = pageMetadata({
+  title: "Personal Driver Service",
+  description: "Book an approved professional driver to drive your own vehicle for airport travel, appointments, business trips, evenings out, and more.",
+  path: "/"
+});
+
+const localBusinessSchema = {
+  "@context": "https://schema.org",
+  "@type": "ProfessionalService",
+  "@id": `${siteUrl}/#service`,
+  name: "ChaufX",
+  url: siteUrl,
+  email: "info@chaufx.ca",
+  telephone: "+1-365-688-5536",
+  description: "Professional driver service for customers who travel in their own vehicles.",
+  areaServed: ["Toronto", "Mississauga", "Greater Toronto Area"],
+  parentOrganization: { "@id": `${siteUrl}/#organization` }
 };
 
 const services = [
@@ -167,7 +183,9 @@ const portals = [
 
 export default function HomePage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData data={localBusinessSchema} />
+      <PublicPageShell
       heroTitle="Professional Drivers for Your Own Car"
       heroCopy="ChaufX connects you with trusted professional drivers who drive your vehicle, so you can travel safely, comfortably, and on your schedule. Whether you're heading to the airport, attending a business meeting, visiting a medical appointment, or enjoying a night out, you stay in your own car while we handle the driving."
       heroTagline="Your Car, Your Convenience, Your Safety"
@@ -538,6 +556,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }
