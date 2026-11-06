@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../components/structured-data";
+import { pageMetadata } from "../../lib/seo";
+
+export const metadata: Metadata = pageMetadata({ title: "Pricing & Memberships", description: "View ChaufX hourly driver rates, the two-hour minimum booking, and membership options for customers who travel in their own vehicle.", path: "/pricing" });
 
 const includedItems = [
   {
@@ -143,7 +148,9 @@ const billingNotes = [
 
 export default function PricingPage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Pricing", path: "/pricing" }])} />
+      <PublicPageShell
       heroTitle="Pricing"
       heroCopy="ChaufX pricing is designed to stay simple, inclusive, and billed in Canadian dollars."
       heroActions={
@@ -277,6 +284,7 @@ export default function PricingPage() {
 
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }

@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import { SessionIdleGuard } from "../components/session-idle-guard";
+import { StructuredData, chaufxOrganizationSchema } from "../components/structured-data";
+import { siteUrl } from "../lib/seo";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ChaufX Canada",
-  description: "Personal driver platform for vehicle owners, drivers, and operators.",
+  metadataBase: new URL(siteUrl),
+  title: { default: "ChaufX | Personal Driver Service", template: "%s | ChaufX" },
+  description: "Book an approved professional driver to drive your own vehicle with ChaufX.",
   verification: {
     google: "0PH-nAjJKeDhuECn_eAqM1tm0jUIRQeDRkq7cqe5_Hw"
   },
@@ -22,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <head>
+        <StructuredData data={chaufxOrganizationSchema} />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':

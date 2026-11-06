@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicPageShell } from "../../components/public-page-shell";
+import { StructuredData, breadcrumbSchema } from "../../components/structured-data";
+import { pageMetadata } from "../../lib/seo";
+
+export const metadata: Metadata = pageMetadata({ title: "About ChaufX", description: "Learn about ChaufX, the Canadian platform connecting customers with approved professional drivers who drive their own vehicles.", path: "/about" });
 
 export default function AboutPage() {
   return (
-    <PublicPageShell
+    <>
+      <StructuredData data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "About ChaufX", path: "/about" }])} />
+      <PublicPageShell
       heroTitle="About Us"
       heroCopy="ChaufX is a Canadian trusted company that connects you with trusted professional drivers."
     >
@@ -31,6 +38,7 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
-    </PublicPageShell>
+      </PublicPageShell>
+    </>
   );
 }

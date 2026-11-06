@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ManagedBlogPost } from "../lib/blog";
-import { fetchPublicBlogPosts } from "../lib/blog";
 import { useSoroBlogArticles } from "./soro-blog-data";
 
 type BlogCard = {
@@ -128,39 +127,8 @@ function ArticleCard({ article, featured = false }: { article: BlogCard; feature
   );
 }
 
-export function ChaufxBlogGrid() {
-  const [managedPosts, setManagedPosts] = useState<ManagedBlogPost[]>([]);
-  const [managedLoading, setManagedLoading] = useState(true);
+export function ChaufxBlogGrid({ managedPosts }: { managedPosts: ManagedBlogPost[] }) {
   const { articles: soroArticles, loading: soroLoading, sourceNode } = useSoroBlogArticles();
-
-  useEffect(() => {
-    let mounted = true;
-
-    fetchPublicBlogPosts()
-      .then((posts) => {
-        if (!mounted) {
-          return;
-        }
-
-        setManagedPosts(posts);
-      })
-      .catch(() => {
-        if (!mounted) {
-          return;
-        }
-
-        setManagedPosts([]);
-      })
-      .finally(() => {
-        if (mounted) {
-          setManagedLoading(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   const combinedArticles = useMemo<BlogCard[]>(() => {
     const managedCards = managedPosts.map(buildManagedCard);
@@ -186,7 +154,7 @@ export function ChaufxBlogGrid() {
 
   const featuredArticle = combinedArticles[0];
   const remainingArticles = combinedArticles.slice(1);
-  const loading = managedLoading && soroLoading && !combinedArticles.length;
+  const loading = soroLoading && !combinedArticles.length;
   const placeholders = Array.from({ length: 6 }, (_, index) => index);
 
   return (
