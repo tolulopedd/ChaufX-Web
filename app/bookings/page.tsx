@@ -28,6 +28,10 @@ function requestTypeLabel(value?: string) {
   return value === "LATER" ? "Schedule later" : "ChaufX now";
 }
 
+function customerName(booking: any) {
+  return booking.guestBooking ? `${booking.guestBooking.fullName} · Guest` : booking.customer?.user?.fullName ?? "Customer";
+}
+
 function getLifecycleActions(status: string) {
   switch (status) {
     case "PENDING":
@@ -145,6 +149,8 @@ export default function BookingsPage() {
 
       const haystack = [
         booking.customer?.user?.fullName,
+        booking.guestBooking?.fullName,
+        booking.guestBooking?.email,
         booking.assignedDriver?.user?.fullName,
         booking.pickupLocation,
         booking.destinationLocation,
@@ -298,7 +304,7 @@ export default function BookingsPage() {
                       {booking.pickupLocation} to {booking.destinationLocation}
                     </div>
                     <div className="mt-1 truncate text-sm text-slate-500">
-                      {booking.customer.user.fullName} · {formatDate(booking.scheduledStartAt)}
+                      {customerName(booking)} · {formatDate(booking.scheduledStartAt)}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600">
                       <span>{requestTypeLabel(booking.requestType)}</span>
@@ -332,7 +338,7 @@ export default function BookingsPage() {
                   <StatusPill label={selectedBooking.status} tone={statusToneMap[String(selectedBooking.status)] ?? "neutral"} />
                 </div>
                 <p className="mt-2 text-sm text-slate-500">
-                  {selectedBooking.customer.user.fullName} · {formatDate(selectedBooking.scheduledStartAt)}
+                  {customerName(selectedBooking)} · {formatDate(selectedBooking.scheduledStartAt)}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -367,7 +373,7 @@ export default function BookingsPage() {
               <DetailSection
                 title="Booking overview"
                 fields={[
-                  { label: "Customer", value: selectedBooking.customer.user.fullName },
+                  { label: "Customer", value: customerName(selectedBooking) },
                   { label: "Request type", value: requestTypeLabel(selectedBooking.requestType) },
                   { label: "Assigned driver", value: selectedBooking.assignedDriver?.user.fullName ?? "Unassigned" },
                   { label: "Estimated fare", value: toCurrency(Number(selectedBooking.fareEstimate), "CAD") },
