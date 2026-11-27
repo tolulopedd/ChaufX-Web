@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { trackBookingEvent, trackBookingFormStarted, trackDataLayerEvent } from "../../lib/booking-tracking";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://chaufx-backend.onrender.com/api";
 const MAPBOX = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -12,10 +13,6 @@ const money = (value: number, currency = "CAD") => new Intl.NumberFormat("en-CA"
 // Keep Book Now safely ahead of server validation while still representing the
 // moment the customer proceeds to checkout, not when they opened the form.
 const bookNowStartAt = () => new Date(Date.now() + 2 * 60_000).toISOString();
-function track(event: string, data: Record<string, unknown> = {}) {
-  if (typeof window !== "undefined") (window as Window & { dataLayer?: unknown[] }).dataLayer?.push({ event, ...data });
-}
-
 async function searchAddress(query: string) {
   if (!MAPBOX || query.trim().length < 3) return [] as Suggestion[];
   const params = new URLSearchParams({ access_token: MAPBOX, autocomplete: "true", limit: "5", country: "ca", types: "address,poi,place,postcode" });
@@ -33,6 +30,9 @@ export function GuestBookingForm() {
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const lastFareEstimateKey = useRef<string | null>(null);
+  const lastSubmitAttemptAt = useRef(0);
+  const submitInFlight = useRef(false);
   const validRoute = Boolean(form.pickupLat && form.pickupLng && form.destinationLat && form.destinationLng);
   const utm = useMemo(() => {
     if (typeof window === "undefined") return undefined;
@@ -40,8 +40,6 @@ export function GuestBookingForm() {
     return { source: query.get("utm_source") ?? undefined, medium: query.get("utm_medium") ?? undefined, campaign: query.get("utm_campaign") ?? undefined, term: query.get("utm_term") ?? undefined, content: query.get("utm_content") ?? undefined, landingPath: `${window.location.pathname}${window.location.search}` };
   }, []);
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((current) => ({ ...current, [key]: value }));
-
-  useEffect(() => { track("guest_booking_started", { booking_type: requestType }); }, [requestType]);
 
   // Browser Back from Stripe Checkout returns to the previous page rather
   // than Stripe's configured cancel URL. Resume a still-unpaid trip so the
@@ -80,7 +78,19 @@ export function GuestBookingForm() {
         const response = await fetch(`${API}/guest-bookings/estimate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, scheduledStartAt: requestType === "NOW" ? bookNowStartAt() : form.scheduledStartAt, requestType }) });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error?.message ?? "Unable to calculate fare.");
-        setEstimate(data); setMessage("");
+        setEstimate(data);
+        setMessage("");
+        const fareKey = `${data.fareEstimate}:${data.currency}:${form.expectedDurationMinutes}:${form.zoneCode}`;
+        if (lastFareEstimateKey.current !== fareKey) {
+          lastFareEstimateKey.current = fareKey;
+          trackBookingEvent("FareEstimated", {
+            content_name: "booking_form",
+            duration_hours: form.expectedDurationMinutes / 60,
+            service_province: form.zoneCode,
+            value: data.fareEstimate,
+            currency: "CAD"
+          });
+        }
       } catch (error) { setEstimate(null); setMessage(error instanceof Error ? error.message : "Unable to calculate fare."); }
     }, 350);
     return () => window.clearTimeout(timer);
@@ -93,23 +103,46 @@ export function GuestBookingForm() {
     if (!navigator.geolocation) return setMessage("Location is not available in this browser.");
     navigator.geolocation.getCurrentPosition((position) => { setForm((current) => ({ ...current, pickupLocation: "Current location", pickupLat: position.coords.latitude, pickupLng: position.coords.longitude })); setMessage("Current location added. Select an address if you need to refine it."); }, () => setMessage("We could not access your location. Enter and select your pickup address."), { enableHighAccuracy: true, timeout: 10_000 });
   }
+  function bookingEventProperties(includeValue = false) {
+    return {
+      content_name: "booking_form" as const,
+      duration_hours: form.expectedDurationMinutes / 60,
+      service_province: form.zoneCode,
+      ...(includeValue && estimate ? { value: estimate.fareEstimate, currency: "CAD" as const } : {})
+    };
+  }
+  function trackSubmitAttempt() {
+    const now = Date.now();
+    // A pointer click immediately triggers submit. Treat those as one attempt,
+    // while retaining a distinct event if the customer tries again.
+    if (now - lastSubmitAttemptAt.current < 500) return;
+    lastSubmitAttemptAt.current = now;
+    trackBookingEvent("BookingSubmitAttempted", bookingEventProperties());
+  }
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (!estimate) return setMessage("Select both addresses and wait for your fare estimate.");
+    event.preventDefault();
+    trackSubmitAttempt();
+    if (!estimate) return setMessage("Select both addresses and wait for your fare estimate.");
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setBusy(true); setMessage("");
     try {
       const response = await fetch(`${API}/guest-bookings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, vehicleDetails: form.vehicleDetails || undefined, specialNotes: form.specialNotes || undefined, scheduledStartAt: requestType === "NOW" ? bookNowStartAt() : form.scheduledStartAt, requestType, utm }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? "Unable to create your booking.");
-      track("guest_booking_submitted", { booking_type: requestType, value: estimate.fareEstimate, currency: estimate.currency, utm_source: utm?.source, utm_campaign: utm?.campaign });
+      // Lead is emitted only after the API has created the booking. Attribution
+      // remains on the booking record and is never sent in conversion data.
+      trackBookingEvent("Lead", bookingEventProperties(true));
+      trackDataLayerEvent("guest_booking_submitted", bookingEventProperties(true));
       window.sessionStorage.setItem("chaufx_guest_booking_access", data.accessToken);
       const checkoutResponse = await fetch(`${API}/guest-bookings/${encodeURIComponent(data.accessToken)}/checkout-session`, { method: "POST" });
       const checkout = await checkoutResponse.json();
       if (!checkoutResponse.ok) throw new Error(checkout.error?.message ?? "Unable to open secure payment.");
-      track("guest_booking_payment_started", { booking_id: data.booking?.id, value: estimate.fareEstimate, currency: estimate.currency });
+      trackDataLayerEvent("guest_booking_payment_started", bookingEventProperties(true));
       if (!checkout.checkoutUrl) throw new Error("Secure payment is not ready yet. Please try again.");
       window.location.assign(checkout.checkoutUrl);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create your booking."); } finally { setBusy(false); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create your booking."); } finally { submitInFlight.current = false; setBusy(false); }
   }
-  return <section className="bg-white"><div className="mx-auto max-w-4xl px-5 py-10 md:px-8 md:py-14"><form onSubmit={submit} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.3)] sm:p-8">
+  return <section className="bg-white"><div className="mx-auto max-w-4xl px-5 py-10 md:px-8 md:py-14"><form onSubmit={submit} onFocusCapture={() => trackBookingFormStarted(bookingEventProperties())} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_70px_-50px_rgba(15,23,42,0.3)] sm:p-8">
     <div className="flex rounded-2xl bg-slate-100 p-1">{(["NOW", "LATER"] as const).map((value) => <button type="button" key={value} onClick={() => { setRequestType(value); update("scheduledStartAt", minimumStart(value)); }} className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold ${requestType === value ? "bg-[#2563EB] text-white shadow-sm" : "text-slate-600"}`}>{value === "NOW" ? "Book now" : "Schedule later"}</button>)}</div>
     <div className="mt-7 grid gap-5 md:grid-cols-2"><Address label="Pickup address" value={form.pickupLocation} active={activeAddress === "pickup"} suggestions={suggestions} onFocus={() => setActiveAddress("pickup")} onChange={(value) => setForm((current) => ({ ...current, pickupLocation: value, pickupLat: 0, pickupLng: 0 }))} onChoose={(item) => choose("pickup", item)} /><Address label="Destination address" value={form.destinationLocation} active={activeAddress === "destination"} suggestions={suggestions} onFocus={() => setActiveAddress("destination")} onChange={(value) => setForm((current) => ({ ...current, destinationLocation: value, destinationLat: 0, destinationLng: 0 }))} onChoose={(item) => choose("destination", item)} /></div>
     <button type="button" onClick={currentLocation} className="mt-3 text-sm font-semibold text-[#2563EB]">Use my current location</button>
@@ -117,7 +150,7 @@ export function GuestBookingForm() {
     <div className="mt-5 grid gap-5 md:grid-cols-2"><Field label="Your name"><input required value={form.fullName} onChange={(event) => update("fullName", event.target.value)} /></Field><Field label="Mobile number"><input required type="tel" value={form.phone} onChange={(event) => update("phone", event.target.value)} /></Field><Field label="Email"><input required type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></Field><Field label="Vehicle details (optional)"><input value={form.vehicleDetails} placeholder="Make, model, plate" onChange={(event) => update("vehicleDetails", event.target.value)} /></Field></div>
     <Field label="Special instructions (optional)" extra="mt-5"><textarea rows={3} value={form.specialNotes} onChange={(event) => update("specialNotes", event.target.value)} /></Field>
     <div className="mt-6 rounded-2xl bg-slate-50 p-5"><div className="flex items-end justify-between gap-4"><div><p className="text-sm font-medium text-slate-600">Estimated fare</p><p className="mt-1 text-2xl font-bold text-slate-950">{estimate ? money(estimate.fareEstimate, estimate.currency) : "Add trip details"}</p></div>{estimate ? <p className="text-right text-sm text-slate-500">{estimate.billableHours} billable hours<br />Taxes may apply</p> : null}</div><p className="mt-4 text-sm leading-6 text-slate-600">{requestType === "NOW" ? "Your card will be authorized now. You will only be charged after a driver accepts." : "Your card will be charged securely when you confirm this scheduled booking."}</p></div>
-    {message ? <p role="alert" className="mt-4 text-sm font-medium text-rose-600">{message}</p> : null}<button disabled={busy || !estimate} className="mt-6 w-full rounded-full bg-[#2563EB] px-5 py-3.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{busy ? "Preparing secure payment…" : "Continue to secure payment"}</button><p className="mt-4 text-center text-sm text-slate-500">Already a member? <Link href="/login" className="font-semibold text-[#2563EB]">Sign in for member pricing</Link></p>
+    {message ? <p role="alert" className="mt-4 text-sm font-medium text-rose-600">{message}</p> : null}<button onClick={trackSubmitAttempt} disabled={busy || !estimate} className="mt-6 w-full rounded-full bg-[#2563EB] px-5 py-3.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{busy ? "Preparing secure payment…" : "Continue to secure payment"}</button><p className="mt-4 text-center text-sm text-slate-500">Already a member? <Link href="/login" className="font-semibold text-[#2563EB]">Sign in for member pricing</Link></p>
   </form></div></section>;
 }
 function Field({ label, children, extra = "" }: { label: string; children: React.ReactNode; extra?: string }) { return <label className={`block text-sm font-medium text-slate-700 ${extra}`}>{label}<span className="mt-1.5 block [&_input,&_select,&_textarea]:w-full [&_input,&_select,&_textarea]:rounded-xl [&_input,&_select,&_textarea]:border [&_input,&_select,&_textarea]:border-slate-300 [&_input,&_select,&_textarea]:px-4 [&_input,&_select,&_textarea]:py-3.5 [&_input,&_select,&_textarea]:font-normal [&_input,&_select,&_textarea]:outline-none [&_input,&_select,&_textarea]:focus:border-[#2563EB]">{children}</span></label>; }

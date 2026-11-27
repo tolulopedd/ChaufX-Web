@@ -2,14 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { trackDataLayerEvent } from "../../../lib/booking-tracking";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://chaufx-backend.onrender.com/api";
 type Booking = { reference: string; booking: { id: string; pickupLocation: string; destinationLocation: string; scheduledStartAt: string; expectedDurationMinutes: number; vehicleDetails?: string | null; fareEstimate: number; currency: string; status: string; paymentStatus: string; assignedDriverName?: string | null }; claimed: boolean };
 const money = (value: number, currency = "CAD") => new Intl.NumberFormat("en-CA", { style: "currency", currency }).format(value);
-function track(event: string, data: Record<string, unknown> = {}) {
-  if (typeof window !== "undefined") (window as Window & { dataLayer?: unknown[] }).dataLayer?.push({ event, ...data });
-}
-
 export default function GuestBookingConfirmationPage() {
   const [booking, setBooking] = useState<Booking | null>(null); const [token, setToken] = useState(""); const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
   useEffect(() => {
@@ -23,11 +20,14 @@ export default function GuestBookingConfirmationPage() {
   }, []);
   useEffect(() => {
     if (booking && (booking.booking.paymentStatus === "AUTHORIZED" || booking.booking.paymentStatus === "CAPTURED")) {
-      track("guest_booking_payment_confirmed", { booking_id: booking.booking.id, value: booking.booking.fareEstimate, currency: booking.booking.currency, payment_status: booking.booking.paymentStatus });
+      const eventKey = `chx_guest_payment_confirmed:${booking.booking.id}:${booking.booking.paymentStatus}`;
+      if (window.sessionStorage.getItem(eventKey)) return;
+      window.sessionStorage.setItem(eventKey, "1");
+      trackDataLayerEvent("guest_booking_payment_confirmed", { value: booking.booking.fareEstimate, currency: booking.booking.currency, payment_status: booking.booking.paymentStatus });
     }
   }, [booking]);
   async function load(access: string, quiet = false) { try { const response = await fetch(`${API}/guest-bookings/${encodeURIComponent(access)}`); const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? "Unable to load booking."); setBooking(data); if (!quiet) setMessage(""); return true; } catch (error) { if (!quiet) setMessage(error instanceof Error ? error.message : "Unable to load booking."); return false; } }
-  async function payment() { if (!token) return; setBusy(true); setMessage(""); try { const response = await fetch(`${API}/guest-bookings/${encodeURIComponent(token)}/checkout-session`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? "Unable to start secure payment."); track("guest_booking_payment_started", { booking_id: booking?.booking.id, value: booking?.booking.fareEstimate, currency: booking?.booking.currency }); if (data.checkoutUrl) window.location.assign(data.checkoutUrl); else await load(token); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to start secure payment."); } finally { setBusy(false); } }
+  async function payment() { if (!token) return; setBusy(true); setMessage(""); try { const response = await fetch(`${API}/guest-bookings/${encodeURIComponent(token)}/checkout-session`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? "Unable to start secure payment."); trackDataLayerEvent("guest_booking_payment_started", { value: booking?.booking.fareEstimate, currency: booking?.booking.currency }); if (data.checkoutUrl) window.location.assign(data.checkoutUrl); else await load(token); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to start secure payment."); } finally { setBusy(false); } }
   async function cancel() { if (!token || !window.confirm("Cancel this booking?")) return; setBusy(true); try { const response = await fetch(`${API}/guest-bookings/${encodeURIComponent(token)}/cancel`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? "Unable to cancel booking."); setMessage("Booking cancelled."); await load(token); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to cancel booking."); } finally { setBusy(false); } }
   if (!booking) return <main className="mx-auto max-w-2xl px-5 py-24"><p className="text-slate-600">{message || "Loading your booking…"}</p>{message ? <Link href="/booking" className="mt-5 inline-block text-sm font-semibold text-[#2563EB]">Return to booking</Link> : null}</main>;
   const { booking: trip } = booking; const paid = trip.paymentStatus === "AUTHORIZED" || trip.paymentStatus === "CAPTURED";
